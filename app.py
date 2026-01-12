@@ -7,7 +7,7 @@ from indicators import MODULLER
 
 st.set_page_config(page_title="Pro Terminal", layout="wide")
 
-# --- CSS (Hover Box Sabitleme) ---
+# --- CSS SİHİRBAZLIĞI ---
 st.markdown("""
     <style>
     [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer {
@@ -54,13 +54,13 @@ try:
         toplam_satir = 1 + len(osc_list)
         satir_oranlari = [0.6] + [0.4/len(osc_list) if osc_list else 0] * len(osc_list)
 
-        # vertical_spacing: Grafiklerin arasındaki boşluğu belirler
+        # vertical_spacing: 0.10 yaptık (tarihlerin sığması için ana grafik ve osc arası boşluk)
         fig = make_subplots(rows=toplam_satir, cols=1, shared_xaxes=True, 
-                            vertical_spacing=0.08, row_heights=satir_oranlari)
+                            vertical_spacing=0.10, row_heights=satir_oranlari)
 
         x_axis = df.index.strftime("%d/%m %H:%M")
 
-        # 1. Ana Fiyat Grafiği (Candlestick)
+        # 1. Ana Fiyat (Candlestick)
         fig.add_trace(go.Candlestick(
             x=x_axis, open=df['Open'], high=df['High'], 
             low=df['Low'], close=df['Close'], name="OHLC"
@@ -76,32 +76,25 @@ try:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 current_row += 1
 
-        # 3. Eksen Ayarları
-        # Hata veren fig.update_traces(xaxis="x") satırı kaldırıldı.
+        # 3. Eksen ve Tarih Düzenlemeleri
+        # Hatalı olan fig.update_traces(xaxis="x") silindi.
         
-        fig.update_xaxes(
-            showspikes=True, spikemode="across", spikesnap="cursor",
-            spikethickness=1, spikedash="dash", spikecolor="gray",
-            showgrid=False, zeroline=False,
-            xaxis_type='category'
-        )
-
-        # --- TARİHLERİ ÜSTTEKİ GRAFİK ALTINDA GÖSTERME ---
         for i in range(1, toplam_satir + 1):
             if i == 1:
-                # Sadece ilk satırda tarihleri göster
+                # Sadece üstteki fiyat grafiğinde tarihleri göster
                 fig.update_xaxes(
                     showticklabels=True, 
                     tickangle=-45, 
                     tickfont=dict(size=10),
-                    side="bottom", # Tarihlerin konumu
+                    xaxis_type='category',
+                    showgrid=False,
                     row=1, col=1
                 )
             else:
-                # Alt grafiklerin (RSI vb.) tarih etiketlerini tamamen kapat
+                # Alttaki tüm osilatörlerin tarihlerini gizle
                 fig.update_xaxes(showticklabels=False, row=i, col=1)
 
-        # LAYOUT AYARLARI
+        # Genel Layout
         fig.update_layout(
             template="plotly_dark" if tema=="Siyah" else "plotly_white",
             paper_bgcolor=arkaplan, plot_bgcolor=arkaplan,
@@ -109,7 +102,7 @@ try:
             xaxis_rangeslider_visible=False,
             dragmode='pan', 
             showlegend=False,
-            margin=dict(r=50, l=10, t=10, b=10),
+            margin=dict(r=50, l=10, t=10, b=30), # Alt margin b=30 yeterli çünkü tarihler üstte
             hovermode="x unified",
             hoverdistance=-1,
             hoverlabel=dict(
