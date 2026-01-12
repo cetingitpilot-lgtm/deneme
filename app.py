@@ -46,19 +46,19 @@ try:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 current_row += 1
 
-        # --- KRİTİK DÜZELTME: TÜM VERİLERİ TEK BİR X EKSENİNE BAĞLA ---
+        # --- TÜM VERİLERİ TEK BİR X EKSENİNE BAĞLA ---
         fig.update_traces(xaxis="x") 
 
-        # --- DİKEY ÇİZGİ AYARLARI ---
+        # --- DİKEY ÇİZGİ (SPIKE) AYARLARI ---
         fig.update_xaxes(
             showspikes=True,
-            spikemode="across+marker", # "across" tüm satırları kesmesini sağlar
+            spikemode="across", 
             spikesnap="cursor",
             spikethickness=1,
             spikedash="dash",
             spikecolor="gray",
-            showline=True,
-            showgrid=True
+            showgrid=False, # DİKEY IZGARALARI KAPATTIK (Sorunu çözen yer)
+            zeroline=False  # Başlangıç çizgisini kapattık
         )
 
         # GENEL GÖRÜNÜM AYARLARI
@@ -72,14 +72,15 @@ try:
             dragmode='pan',
             showlegend=False,
             hovermode="x unified",
-            spikedistance=-1, # Spike'ın tüm grafiği (en üstten en alta) taramasını zorunlu kılar
+            spikedistance=-1, 
             hoverdistance=100,
             margin=dict(r=100, t=50, b=50)
         )
         
-        fig.update_yaxes(side="right")
+        # Yatay Izgaralar (Opsiyonel: Fiyat seviyelerini görmek için açık kalabilir)
+        fig.update_yaxes(side="right", showgrid=True, gridcolor="rgba(128,128,128,0.1)")
         
-        # Gereksiz tarih etiketlerini temizle, sadece en altta kalsın
+        # Gereksiz tarih etiketlerini temizle
         for i in range(1, toplam_satir):
             fig.update_xaxes(showticklabels=False, row=i, col=1)
         fig.update_xaxes(showticklabels=True, row=toplam_satir, col=1)
