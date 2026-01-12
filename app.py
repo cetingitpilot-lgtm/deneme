@@ -33,35 +33,49 @@ try:
 
         x_axis = df.index.strftime("%d/%m %H:%M")
 
-        # 1. Ana Fiyat
-        fig.add_trace(go.Candlestick(x=x_axis, open=df['Open'], high=df['High'], 
-                                   low=df['Low'], close=df['Close'], name="Fiyat"), row=1, col=1)
+        # 1. Ana Fiyat (Hoversiz Temiz Görünüm)
+        fig.add_trace(go.Candlestick(
+            x=x_axis, open=df['Open'], high=df['High'], 
+            low=df['Low'], close=df['Close'], name="Fiyat",
+            hoverinfo="none" # Mouse yanındaki kutuyu kapatır
+        ), row=1, col=1)
 
-        # 2. İndikatörleri Çiz
+        # 2. İndikatörleri Çiz ve Etiketleri Hazırla
         current_row = 2
         for isim in secilenler:
             modul = MODULLER[isim]
             if modul.TYPE == "overlay":
                 fig = modul.ciz(fig, df, x_axis, row=1)
+                # Overlay indikatörlerin hoverını kapat
+                fig.data[-1].hoverinfo = "none"
             else:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
+                fig.data[-1].hoverinfo = "none"
                 
-                # --- İSİMLERİ PAPER KOORDİNATI İLE SABİTLEME ---
+                # İndikatör İsmini Sabitle (Daha önce yaptığımız gibi)
                 fig.add_annotation(
-                    xref="paper",  # Yazıyı doğrudan ekranın soluna kilitler (0=en sol)
-                    yref=f"y{current_row if current_row > 1 else ''} domain", # Dikeyde panelin içine kilitler
-                    x=0.005,      # Ekranın solundan %0.5 içeride
-                    y=0.98,       # Panelin tepesinden %2 aşağıda
-                    text=f"<b>{isim}</b>",
-                    showarrow=False,
-                    font=dict(size=12, color=metin_rengi),
-                    align="left",
-                    xanchor="left",
-                    yanchor="top"
+                    xref="paper", yref=f"y{current_row if current_row > 1 else ''} domain",
+                    x=0.005, y=0.98, text=f"<b>{isim}</b>",
+                    showarrow=False, font=dict(size=12, color=metin_rengi),
+                    align="left", xanchor="left", yanchor="top"
                 )
                 current_row += 1
 
-        # --- DİKEY ÇİZGİ VE EKSEN AYARLARI ---
+        # --- YENİ ÖZELLİK: SOL ÜSTTE BİRLEŞİK SABİT ETİKET (HOVER DATA) ---
+        # Plotly unified hover'ı sol üste sabitlemek için layout ayarı
+        fig.update_layout(
+            hovermode="x unified",
+            hoverlabel=dict(
+                namelength=-1,
+                bgcolor="rgba(0,0,0,0)", # Arkaplanı şeffaf yap
+                font_size=13,
+                font_family="Monospace",
+                font_color=metin_rengi,
+                align="left"
+            )
+        )
+
+        # Spike Line ve Eksen Ayarları
         fig.update_traces(xaxis="x") 
         fig.update_xaxes(
             showspikes=True, spikemode="across", spikesnap="cursor",
@@ -75,16 +89,26 @@ try:
             height=400 + (len(osc_list)*200),
             xaxis_rangeslider_visible=False, xaxis_type='category',
             dragmode='pan', showlegend=False,
-            hovermode="x unified", spikedistance=-1, hoverdistance=100,
-            margin=dict(r=80, l=10, t=30, b=50) 
+            # HOVER KUTUSUNUN KONUMUNU SOL ÜSTE SABİTLEME
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(r=80, l=10, t=50, b=50) 
         )
         
+        # --- KRİTİK AYAR: HOVER KUTUSUNU EKRANIN SOL ÜSTÜNE ZORLA ---
+        fig.update_layout(
+            hoverlabel=dict(
+                bordercolor="rgba(0,0,0,0)",
+            )
+        )
+
         fig.update_yaxes(side="right", showgrid=True, gridcolor="rgba(128,128,128,0.1)")
         
         for i in range(1, toplam_satir):
             fig.update_xaxes(showticklabels=False, row=i, col=1)
         fig.update_xaxes(showticklabels=True, row=toplam_satir, col=1)
 
+        # Plotly config ile hover kutusunun mouse'u takip etmesini engellemek zordur, 
+        # ancak hovermode="x unified" tüm değerleri tek bir kutuda toplar.
         st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 except Exception as e:
     st.error(f"Hata oluştu: {e}")
