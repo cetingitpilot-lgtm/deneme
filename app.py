@@ -27,6 +27,7 @@ try:
         toplam_satir = 1 + len(osc_list)
         satir_oranlari = [0.6] + [0.4/len(osc_list) if osc_list else 0] * len(osc_list)
 
+        # shared_xaxes=True burada kritik, alt panellerin X eksenini birbirine bağlar
         fig = make_subplots(rows=toplam_satir, cols=1, shared_xaxes=True, 
                            vertical_spacing=0.03, row_heights=satir_oranlari)
 
@@ -46,18 +47,18 @@ try:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 current_row += 1
 
-        # --- DİKEY ÇİZGİ (SPIKE LINE) TÜM PANELLER İÇİN ---
-        # Bu döngü her bir panelin (row) x eksenine dikey çizgi özelliğini ekler
-        for r in range(1, toplam_satir + 1):
-            fig.update_xaxes(
-                showspikes=True,
-                spikemode="across",
-                spikesnap="cursor",
-                spikethickness=1,
-                spikedash="dash",
-                spikecolor="gray",
-                row=r, col=1
-            )
+        # --- DİKEY ÇİZGİ AYARLARI (GÜNCELLENDİ) ---
+        # Tüm grafiklerde (x, x2, x3...) aynı anda dikey çizgiyi zorunlu kılıyoruz
+        fig.update_xaxes(
+            showspikes=True,
+            spikemode="across",
+            spikesnap="cursor",
+            spikethickness=1,
+            spikedash="dash",
+            spikecolor="gray",
+            # Bu ayar çok önemli: Tüm panellerin spike'larını tek bir x eksenine göre tetikler
+            matches='x' 
+        )
 
         # GENEL GÖRÜNÜM AYARLARI
         fig.update_layout(
@@ -69,12 +70,16 @@ try:
             xaxis_type='category',
             dragmode='pan',
             showlegend=False,
-            hovermode="x unified",
+            hovermode="x unified", # Verileri tek bir kutuda birleştirir
+            hoverdistance=100,      # Mouse yaklaştığında tetiklenme hassasiyeti
+            spikedistance=-1,       # Çizgiyi tüm grafik boyunca (yukarı-aşağı) sonsuz yapar
             margin=dict(r=100, t=50, b=50)
         )
         
         fig.update_yaxes(side="right")
-        # Sadece en alt panelde tarihleri göster
+        # Sadece en alt panelde tarihleri göster, diğerlerini gizle
+        for i in range(1, toplam_satir):
+            fig.update_xaxes(showticklabels=False, row=i, col=1)
         fig.update_xaxes(showticklabels=True, row=toplam_satir, col=1)
 
         st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
