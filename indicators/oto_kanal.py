@@ -2,45 +2,41 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-# app.py'nin ve __init__.py'nin tanıması için gerekli değişkenler
+# app.py'nin ve __init__.py'nin tanıması için gerekli anahtar değişkenler
 NAME = "Oto Kanal"
 TYPE = "overlay"
 
 def ciz(fig, df, x_axis, row=1):
     """
-    Bu fonksiyon app.py içindeki dongu tarafından çağrılır.
+    Otomatik Lineer Regresyon Kanalı Çizici
     """
     n = len(df)
-    length = 100  # Geriye dönük kaç bar baz alınacak
-    deviation = 2.0 # Kanal genişliği çarpanı
+    length = 100    # Kanalın bakacağı son bar sayısı
+    deviation = 2.0  # Standart sapma çarpanı (Genişlik)
 
     if n < length:
         return fig
 
-    # --- 1. Lineer Regresyon Hesaplama ---
+    # --- 1. Hesaplama Alanı ---
     subset_slice = slice(-length, None)
     x_indices = np.arange(n)
     x_subset = x_indices[subset_slice]
     y_subset = df['Close'].iloc[subset_slice].values
 
-    # Geçersiz veri kontrolü (NaN vs)
-    if np.any(np.isnan(y_subset)):
-        y_subset = np.nan_to_num(y_subset, nan=np.nanmean(y_subset))
-
-    # Eğim ve Kesişim Bulma
+    # Lineer Regresyon (y = mx + b)
     slope, intercept = np.polyfit(x_subset, y_subset, 1)
     reg_line = slope * x_subset + intercept
 
-    # --- 2. Kanal Genişliği (Standart Sapma) ---
+    # Kanal Genişliği (Standart Sapma)
     std_dev = np.std(y_subset - reg_line)
     top_line = reg_line + (deviation * std_dev)
     btm_line = reg_line - (deviation * std_dev)
 
-    # Plotly için zaman ekseni
+    # Plotly zaman ekseni (app.py'den gelen format)
     x_dates = x_axis[subset_slice]
 
-    # --- 3. Grafiğe Ekleme ---
-    # Üst Sınır
+    # --- 2. Çizim Alanı ---
+    # Üst Çizgi
     fig.add_trace(go.Scatter(
         x=x_dates, y=top_line,
         mode='lines',
@@ -49,7 +45,7 @@ def ciz(fig, df, x_axis, row=1):
         hoverinfo='skip'
     ), row=row, col=1)
 
-    # Alt Sınır ve Dolgu
+    # Alt Çizgi ve Dolgu
     fig.add_trace(go.Scatter(
         x=x_dates, y=btm_line,
         mode='lines',
@@ -60,12 +56,12 @@ def ciz(fig, df, x_axis, row=1):
         hoverinfo='skip'
     ), row=row, col=1)
 
-    # Orta Hat (Trend)
+    # Orta Trend Hattı
     fig.add_trace(go.Scatter(
         x=x_dates, y=reg_line,
         mode='lines',
-        line=dict(color='rgba(255, 255, 255, 0.2)', width=1, dash='dot'),
-        name='Trend Hattı',
+        line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dot'),
+        name='Trend',
         hoverinfo='none'
     ), row=row, col=1)
 
