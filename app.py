@@ -47,19 +47,20 @@ with st.sidebar:
 try:
     df = yf.download(hisse, period=periyot, interval=zaman)
     if not df.empty:
-        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+        if isinstance(df.columns, pd.MultiIndex): 
+            df.columns = df.columns.get_level_values(0)
         
         osc_list = [i for i in secilenler if MODULLER[i].TYPE == "oscillator"]
         toplam_satir = 1 + len(osc_list)
         satir_oranlari = [0.6] + [0.4/len(osc_list) if osc_list else 0] * len(osc_list)
 
-        # vertical_spacing artırıldı (0.03 -> 0.10) tarihlerin sığması için boşluk açar
+        # vertical_spacing: Grafiklerin arasındaki boşluğu belirler
         fig = make_subplots(rows=toplam_satir, cols=1, shared_xaxes=True, 
-                            vertical_spacing=0.10, row_heights=satir_oranlari)
+                            vertical_spacing=0.08, row_heights=satir_oranlari)
 
         x_axis = df.index.strftime("%d/%m %H:%M")
 
-        # 1. Ana Fiyat Grafiği
+        # 1. Ana Fiyat Grafiği (Candlestick)
         fig.add_trace(go.Candlestick(
             x=x_axis, open=df['Open'], high=df['High'], 
             low=df['Low'], close=df['Close'], name="OHLC"
@@ -75,7 +76,9 @@ try:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 current_row += 1
 
-        # 3. Eksen Ayarları ve Tarihlerin Konumu
+        # 3. Eksen Ayarları
+        # Hata veren fig.update_traces(xaxis="x") satırı kaldırıldı.
+        
         fig.update_xaxes(
             showspikes=True, spikemode="across", spikesnap="cursor",
             spikethickness=1, spikedash="dash", spikecolor="gray",
@@ -83,17 +86,19 @@ try:
             xaxis_type='category'
         )
 
-        # ÖNEMLİ: Sadece 1. satırın (Ana Grafik) tarihlerini göster
+        # --- TARİHLERİ ÜSTTEKİ GRAFİK ALTINDA GÖSTERME ---
         for i in range(1, toplam_satir + 1):
             if i == 1:
+                # Sadece ilk satırda tarihleri göster
                 fig.update_xaxes(
                     showticklabels=True, 
                     tickangle=-45, 
                     tickfont=dict(size=10),
+                    side="bottom", # Tarihlerin konumu
                     row=1, col=1
                 )
             else:
-                # Alttaki indikatörlerin tarih etiketlerini kapat
+                # Alt grafiklerin (RSI vb.) tarih etiketlerini tamamen kapat
                 fig.update_xaxes(showticklabels=False, row=i, col=1)
 
         # LAYOUT AYARLARI
@@ -102,7 +107,8 @@ try:
             paper_bgcolor=arkaplan, plot_bgcolor=arkaplan,
             height=700,
             xaxis_rangeslider_visible=False,
-            dragmode='pan', showlegend=False,
+            dragmode='pan', 
+            showlegend=False,
             margin=dict(r=50, l=10, t=10, b=10),
             hovermode="x unified",
             hoverdistance=-1,
