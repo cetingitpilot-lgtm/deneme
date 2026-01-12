@@ -37,7 +37,7 @@ try:
         fig.add_trace(go.Candlestick(x=x_axis, open=df['Open'], high=df['High'], 
                                    low=df['Low'], close=df['Close'], name="Fiyat"), row=1, col=1)
 
-        # 2. İndikatörleri Çiz ve İsimleri Ekle
+        # 2. İndikatörleri Çiz ve İsimleri SABİT Ekle
         current_row = 2
         for isim in secilenler:
             modul = MODULLER[isim]
@@ -46,15 +46,18 @@ try:
             else:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 
-                # --- SOL ÜST KÖŞEYE İSİM EKLEME ---
+                # --- SABİT SOL ÜST KÖŞE ETİKETİ ---
                 fig.add_annotation(
+                    # 'domain' kullanarak yazıyı veriye değil, panelin çerçevesine kilitliyoruz
                     xref=f"x{current_row if current_row > 1 else ''} domain", 
                     yref=f"y{current_row if current_row > 1 else ''} domain",
-                    x=0.01, y=0.98, # Sol üst köşe koordinatları
-                    text=f"<b>{isim}</b>", # Kalın yazı
+                    x=0.005, y=0.98, 
+                    text=f"<b>{isim}</b>",
                     showarrow=False,
                     font=dict(size=12, color=metin_rengi),
                     align="left",
+                    xanchor="left", # Yazının başlangıç noktasını sola yasla
+                    yanchor="top",  # Yazının tepe noktasını üste yasla
                     row=current_row, col=1
                 )
                 current_row += 1
@@ -74,7 +77,7 @@ try:
             xaxis_rangeslider_visible=False, xaxis_type='category',
             dragmode='pan', showlegend=False,
             hovermode="x unified", spikedistance=-1, hoverdistance=100,
-            margin=dict(r=100, t=50, b=50)
+            margin=dict(r=100, t=30, b=50) # Üst boşluğu biraz azalttık
         )
         
         fig.update_yaxes(side="right", showgrid=True, gridcolor="rgba(128,128,128,0.1)")
