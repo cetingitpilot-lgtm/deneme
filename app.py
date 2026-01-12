@@ -35,9 +35,11 @@ try:
             df[f'EMA{p}'] = ta.ema(df['Close'], length=p)
         df['RSI'] = ta.rsi(df['Close'], length=14)
 
-        # GRAFİK YAPISI (RSI kapalıysa tek panel, açıksa çift panel)
+        # GRAFİK YAPISI (Dinamik Panel Yönetimi)
         if show_rsi:
-            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+                               vertical_spacing=0.08, # Paneller arası boşluğu artırdık
+                               row_heights=[0.7, 0.3])
         else:
             fig = make_subplots(rows=1, cols=1)
 
@@ -72,13 +74,17 @@ try:
             xaxis_type='category',
             showlegend=False,
             dragmode='pan',
-            margin=dict(r=120, l=10, t=50, b=50) # Alt marjı (b) artırdık
+            margin=dict(r=120, l=10, t=50, b=80) # Alt marjı etiketler sığacak şekilde genişlettik
         )
         
-        # X Eksenini Her Durumda Görünür Yapma
-        fig.update_xaxes(showticklabels=True, row=1, col=1)
+        # Eksen Çakışmasını Engelleyen Kritik Ayar
         if show_rsi:
-            fig.update_xaxes(showticklabels=True, row=2, col=1)
+            # RSI açıkken: Üst paneldeki tarihleri gizle, alt panelde göster
+            fig.update_xaxes(showticklabels=False, row=1, col=1)
+            fig.update_xaxes(showticklabels=True, row=2, col=1, tickangle=45)
+        else:
+            # RSI kapalıyken: Üst panelde tarihleri göster
+            fig.update_xaxes(showticklabels=True, row=1, col=1, tickangle=45)
 
         fig.update_yaxes(side="right", row=1, col=1, showgrid=True, nticks=20)
         if show_rsi:
