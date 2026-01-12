@@ -7,36 +7,40 @@ from indicators import MODULLER
 
 st.set_page_config(page_title="Pro Terminal", layout="wide")
 
-# --- CSS İLE ZORLA SABİTLEME ---
-# Bu kısım Plotly'nin hesaplamalarını ezip hover kutusunu sol üste kilitler
+# --- CSS SİHİRBAZLIĞI (BU KISIM ÇOK ÖNEMLİ) ---
+# Bu kodlar Plotly'nin hareket mekanizmasını bozar ve kutuyu sol üste kilitler.
 st.markdown("""
     <style>
-    /* Hover kutusunun (tooltip) ana taşıyıcısını yakala */
-    .js-plotly-plot .plotly .hoverlayer {
+    /* 1. Hover kutusunun (tooltip) yerini zorla sabitle */
+    /* Streamlit içindeki grafik container'ını hedef alıyoruz */
+    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer {
+        transform: translate(10px, 0px) !important; /* Sol üst köşeye (10px içeriden) sabitle */
         position: absolute !important;
         top: 0px !important;
         left: 0px !important;
-        transform: translate(10px, 0px) !important; /* Sol üstten biraz boşluk */
-        pointer-events: none !important;
-        z-index: 1000 !important;
+        z-index: 10000 !important;
+        pointer-events: none !important; /* Mouse tıklamasını engelleme */
     }
 
-    /* Hover kutusunun içindeki metin hizalaması */
-    .js-plotly-plot .plotly .hoverlayer .hovertext {
-        text-anchor: start !important; /* Yazıyı sola yasla */
-    }
-
-    /* Kutunun arkasındaki siyah/beyaz fonu ve oku kaldır (Sadece yazı kalsın) */
-    .js-plotly-plot .plotly .hoverlayer .hovertext path {
-        fill: rgba(0,0,0,0) !important; /* Arkaplanı tamamen şeffaf yap */
-        stroke: none !important;        /* Çerçeve çizgisini kaldır */
+    /* 2. Kutunun içindeki metinleri düzenle */
+    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer .hovertext text {
+        font-family: 'Monospace', monospace !important;
+        font-size: 12px !important;
+        font-weight: bold !important;
+        fill: #ffffff !important; /* Yazı rengi (Beyaz) */
+        text-shadow: 1px 1px 2px black !important; /* Okunabilirlik için gölge */
     }
     
-    /* Yazıların okunabilirliğini artır (gölge ekle) */
-    .js-plotly-plot .plotly .hoverlayer .hovertext text {
-        text-shadow: 1px 1px 1px rgba(0,0,0,0.8) !important;
-        font-family: 'Courier New', monospace !important;
-        font-weight: bold !important;
+    /* 3. Kutunun arkasındaki siyah fonu ve ok işaretini tamamen YOK ET */
+    /* Sadece yazılar havada asılı kalsın */
+    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer .hovertext path {
+        fill: rgba(0,0,0,0) !important;
+        stroke: none !important;
+    }
+    
+    /* 4. Çizgi üzerindeki baloncukları gizle (sadece genel kutu kalsın) */
+    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer .spikeline {
+        display: none !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -48,6 +52,13 @@ with st.sidebar:
     zaman = st.selectbox("Dilim", ["1d", "1h", "1wk"], index=0)
     tema = st.radio("Tema", ["Siyah", "Beyaz"])
     arkaplan = "#0e1117" if tema == "Siyah" else "white"
+    
+    # CSS içindeki yazı rengini temaya göre ayarla
+    text_color = "white" if tema == "Siyah" else "black"
+    st.markdown(f"""<style>
+    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer .hovertext text {{
+        fill: {text_color} !important;
+    }}</style>""", unsafe_allow_html=True)
     
     st.divider()
     secilenler = st.multiselect("İndikatörler", list(MODULLER.keys()), default=["EMA 7", "RSI"])
@@ -66,7 +77,7 @@ try:
 
         x_axis = df.index.strftime("%d/%m %H:%M")
 
-        # 1. Ana Fiyat
+        # 1. Ana Fiyat (İsimlendirmeyi kısalttık)
         fig.add_trace(go.Candlestick(
             x=x_axis, open=df['Open'], high=df['High'], 
             low=df['Low'], close=df['Close'], name="OHLC"
@@ -82,7 +93,7 @@ try:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 current_row += 1
 
-        # Dikey Çizgi Ayarları
+        # Dikey Çizgi ve Eksen Ayarları
         fig.update_traces(xaxis="x")
         fig.update_xaxes(
             showspikes=True, spikemode="across", spikesnap="cursor",
@@ -90,7 +101,7 @@ try:
             showgrid=False, zeroline=False
         )
 
-        # GRAFİK DÜZENİ
+        # LAYOUT AYARLARI
         fig.update_layout(
             template="plotly_dark" if tema=="Siyah" else "plotly_white",
             paper_bgcolor=arkaplan, plot_bgcolor=arkaplan,
@@ -99,20 +110,24 @@ try:
             dragmode='pan', showlegend=False,
             margin=dict(r=50, l=10, t=10, b=10),
             
-            # --- ÖNEMLİ KISIM: HOVER MODU ---
-            hovermode="x unified", # Tüm verileri tek listede topla
+            # --- KRİTİK AYARLAR ---
+            hovermode="x unified", # Tüm verileri birleştir
+            hoverdistance=-1,      # Tüm dikey eksende yakala
             hoverlabel=dict(
-                # CSS ile bunları ezeceğiz ama yine de varsayılanı ayarlayalım
-                bgcolor="rgba(0,0,0,0)", 
+                bgcolor="rgba(0,0,0,0)", # Plotly tarafında da şeffaflık verelim
                 bordercolor="rgba(0,0,0,0)",
-                font_size=13,
-                font_family="Monospace",
-                align="left",
-                namelength=-1 # İsimleri tam göster
+                namelength=-1,
+                font=dict(family="Monospace"),
+                align="left"
             )
         )
         
         fig.update_yaxes(side="right", showgrid=True, gridcolor="rgba(128,128,128,0.1)")
+        
+        # Gereksiz tarihleri gizle
+        for i in range(1, toplam_satir):
+            fig.update_xaxes(showticklabels=False, row=i, col=1)
+        fig.update_xaxes(showticklabels=True, row=toplam_satir, col=1)
 
         st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 
