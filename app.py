@@ -3,20 +3,19 @@ import yfinance as yf
 import pandas as pd
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
-from indicators import MODULLER # Burası sihirli kısım!
+from indicators import MODULLER
 
 st.set_page_config(page_title="Pro Terminal", layout="wide")
 
-# Sidebar
 with st.sidebar:
     st.header("📊 Kontrol")
     hisse = st.text_input("Hisse", "AAPL").upper()
     periyot = st.selectbox("Geçmiş", ["1mo", "3mo", "6mo", "1y", "5y"], index=2)
     zaman = st.selectbox("Dilim", ["1d", "1h", "1wk"], index=0)
     tema = st.radio("Tema", ["Siyah", "Beyaz"])
+    arkaplan = "#0e1117" if tema == "Siyah" else "white"
     
     st.divider()
-    # Klasördeki her şeyi otomatik listeler
     secilenler = st.multiselect("İndikatörler", list(MODULLER.keys()), default=["EMA 7", "RSI"])
 
 try:
@@ -24,7 +23,6 @@ try:
     if not df.empty:
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         
-        # Panel Sayısını Hesapla
         osc_list = [i for i in secilenler if MODULLER[i].TYPE == "oscillator"]
         toplam_satir = 1 + len(osc_list)
         satir_oranlari = [0.6] + [0.4/len(osc_list) if osc_list else 0] * len(osc_list)
@@ -34,11 +32,9 @@ try:
 
         x_axis = df.index.strftime("%d/%m %H:%M")
 
-        # 1. Ana Fiyat (Her zaman 1. satır)
         fig.add_trace(go.Candlestick(x=x_axis, open=df['Open'], high=df['High'], 
                                    low=df['Low'], close=df['Close'], name="Fiyat"), row=1, col=1)
 
-        # 2. İndikatörleri Dinamik Olarak Çiz
         current_row = 2
         for isim in secilenler:
             modul = MODULLER[isim]
@@ -48,10 +44,27 @@ try:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 current_row += 1
 
-        # Final Dokunuşları
-        fig.update_layout(template="plotly_dark" if tema=="Siyah" else "plotly_white",
-                          height=400 + (len(osc_list)*200), xaxis_rangeslider_visible=False,
-                          xaxis_type='category', dragmode='pan', showlegend=False)
+        # GÖRÜNÜM VE DİKEY ÇİZGİ AYARLARI
+        fig.update_layout(
+            template="plotly_dark" if tema=="Siyah" else "plotly_white",
+            paper_bgcolor=arkaplan,
+            plot_bgcolor=arkaplan,
+            height=400 + (len(osc_list)*200),
+            xaxis_rangeslider_visible=False,
+            xaxis_type='category',
+            dragmode='pan',
+            showlegend=False,
+            hovermode="x unified", # Mouse ile üzerine gelince verileri birleştirir
+            margin=dict(r=100),
+            xaxis=dict(
+                showspikes=True,   # Dikey çizgiyi aç
+                spikemode="across",# Tüm grafiği boydan boya kes
+                spikethickness=1,
+                spikedash="dash",  # Kesik çizgi formatı
+                spikecolor="gray"  # Her iki zeminde de görünen gri
+            )
+        )
+        
         fig.update_yaxes(side="right")
         fig.update_xaxes(showticklabels=True, row=toplam_satir, col=1)
 
