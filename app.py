@@ -30,11 +30,10 @@ try:
             df[f'EMA{p}'] = ta.ema(df['Close'], length=p)
         df['RSI'] = ta.rsi(df['Close'], length=14)
 
-        # GRAFİK YAPISI (Eksenleri sağa alacağız)
+        # GRAFİK YAPISI
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
 
         x_axis = df.index.strftime("%d/%m %H:%M")
-        last_idx = x_axis[-1]
         
         # 1. Mum Grafiği
         fig.add_trace(go.Candlestick(
@@ -42,37 +41,46 @@ try:
             name="Fiyat"
         ), row=1, col=1)
 
-        # Son Fiyat Kesik Çizgisi ve Etiketi
+        # SON FİYAT ETİKETİ (Beyaz Metin)
         last_price = df['Close'].iloc[-1]
         fig.add_hline(y=last_price, line_dash="dash", line_color="white", line_width=1, row=1, col=1,
-                     annotation_text=f"{last_price:.2f}", annotation_position="right", 
-                     annotation_bgcolor="gray")
+                     annotation_text=f"  {last_price:.2f}  ", 
+                     annotation_position="right", 
+                     annotation_bgcolor="gray",
+                     annotation_font_color="white", # Metin Rengi Beyaz
+                     annotation_font_size=12)
 
-        # EMA'lar ve Son Değer Etiketleri
+        # EMA'lar ve Son Değer Etiketleri (Beyaz Metin)
         colors = {7: 'yellow', 14: 'cyan', 30: 'magenta'}
         for p in ema_list:
             ema_val = df[f'EMA{p}'].iloc[-1]
             if not pd.isna(ema_val):
                 fig.add_trace(go.Scatter(x=x_axis, y=df[f'EMA{p}'], 
                                          line=dict(width=1.5, color=colors[p]), name=f"EMA {p}"), row=1, col=1)
-                # Sağ eksende EMA etiketi
+                
                 fig.add_hline(y=ema_val, line_dash="dot", line_color=colors[p], line_width=1, row=1, col=1,
-                             annotation_text=f"E{p}:{ema_val:.2f}", annotation_position="right", 
-                             annotation_bgcolor=colors[p], annotation_font_color="black")
+                             annotation_text=f" E{p}: {ema_val:.2f} ", 
+                             annotation_position="right", 
+                             annotation_bgcolor=colors[p],
+                             annotation_font_color="white", # EMA Kutusu içi Beyaz Metin
+                             annotation_font_size=11)
 
-        # 2. RSI Paneli ve Son Değer Etiketi
+        # 2. RSI Paneli ve Son Değer Etiketi (Beyaz Metin)
         if show_rsi:
             last_rsi = df['RSI'].iloc[-1]
             fig.add_trace(go.Scatter(x=x_axis, y=df['RSI'], line=dict(color='#7e57c2', width=2), name="RSI"), row=2, col=1)
+            
             if not pd.isna(last_rsi):
                 fig.add_hline(y=last_rsi, line_dash="dash", line_color="#7e57c2", row=2, col=1,
-                             annotation_text=f"{last_rsi:.1f}", annotation_position="right", 
-                             annotation_bgcolor="#7e57c2")
+                             annotation_text=f" RSI: {last_rsi:.1f} ", 
+                             annotation_position="right", 
+                             annotation_bgcolor="#7e57c2",
+                             annotation_font_color="white") # RSI Kutusu içi Beyaz Metin
             
             fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1, opacity=0.3)
             fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1, opacity=0.3)
 
-        # TASARIM AYARLARI (Eksen Sağda)
+        # TASARIM AYARLARI
         fig.update_layout(
             template="plotly_dark",
             height=850,
@@ -80,12 +88,11 @@ try:
             xaxis_type='category',
             showlegend=False,
             dragmode='pan',
-            margin=dict(r=80) # Sağ tarafta etiketler için boşluk bıraktık
+            margin=dict(r=100) # Etiketler için sağ boşluğu biraz daha artırdım
         )
         
-        # Fiyat ve RSI eksenlerini sağa taşıyoruz
-        fig.update_yaxes(side="right", row=1, col=1)
-        fig.update_yaxes(side="right", row=2, col=1)
+        fig.update_yaxes(side="right", row=1, col=1, tickfont=dict(color="white"))
+        fig.update_yaxes(side="right", row=2, col=1, tickfont=dict(color="white"))
 
         st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 
