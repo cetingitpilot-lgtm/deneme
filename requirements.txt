@@ -1,4 +1,5 @@
 streamlit
-yfinance --upgrade
+yfinance
 plotly
 pandas
+
