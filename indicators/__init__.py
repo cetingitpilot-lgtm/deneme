@@ -14,10 +14,6 @@ for f in files:
         module = importlib.import_module(f'indicators.{f}')
         if hasattr(module, 'NAME'):
             MODULLER[module.NAME] = module
-    except Exception as e:
+     except Exception as e:
+        st.error(f"Modül yükleme hatası ({f}): {e}") # Terminal yerine ekrana yazdır
         print(f"Modül yüklenemedi {f}: {e}")
-
-# __init__.py dosyasının en altına ekle:
-if "Oto Kanal" not in MODULLER:
-    from . import oto_kanal
-    MODULLER[oto_kanal.NAME] = oto_kanal
