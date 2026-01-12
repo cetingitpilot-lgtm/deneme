@@ -1,0 +1,135 @@
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+
+class AutomatedChannel:
+    NAME = "Automated Linear Regression Channel"
+    TYPE = "overlay"
+
+    def __init__(self, length=100, deviation=2.0):
+        """
+        :param length: Kanalın hesaplanacağı son bar sayısı (Geriye dönük periyot)
+        :param deviation: Kanal genişliği çarpanı (Standart Sapma katsayısı)
+        """
+        self.length = length
+        self.deviation = deviation
+        self.show_markers = True
+
+    def ciz(self, fig, df, x_axis, row=1):
+        # Veri kontrolü
+        n = len(df)
+        if n < self.length: 
+            return fig
+
+        # --- 1. Matematiksel Hesaplama (Lineer Regresyon) ---
+        
+        # Sadece son 'length' kadar veriyi alıyoruz
+        subset_slice = slice(-self.length, None)
+        
+        # X ekseni (Zaman yerine 0, 1, 2... gibi indeksler kullanılır eğim için)
+        x_indices = np.arange(n)
+        x_subset = x_indices[subset_slice]
+        
+        # Y ekseni (Genelde regresyon için 'Close' kullanılır, trendi daha iyi verir)
+        y_subset = df['Close'].iloc[subset_slice].values
+
+        # Numpy ile 1. dereceden polinom (Doğru) uydurma: y = mx + b
+        # slope (eğim) ve intercept (kesişim) bulunur
+        slope, intercept = np.polyfit(x_subset, y_subset, 1)
+
+        # Regresyon Hattını (Merkez Hat) hesapla
+        # Sadece ilgili aralık için çiziyoruz (tüm geçmişe uzatmak yanıltıcı olabilir)
+        regression_line = slope * x_subset + intercept
+
+        # --- 2. Kanal Genişliği (Standart Sapma) ---
+        
+        # Fiyatın merkez hattan ne kadar uzaklaştığını bul (Residuals)
+        residuals = y_subset - regression_line
+        
+        # Standart sapmayı hesapla
+        std_dev = np.std(residuals)
+        
+        # Kanal genişliği
+        channel_width = self.deviation * std_dev
+
+        # Üst ve Alt Hatlar
+        top_line = regression_line + channel_width
+        btm_line = regression_line - channel_width
+
+        # --- 3. Kesişimleri Bulma (Sinyaller) ---
+        
+        # Sinyal hesaplamak için pandas serisine çevirelim (veya numpy array kullanalım)
+        # Dikkat: İndeksler subset uzunluğunda olmalı
+        curr_closes = df['Close'].iloc[subset_slice].values
+        
+        # Sinyal mantığı: Kapanış fiyatı kanalı kırıyor mu?
+        # (Bu sadece kanalın çizildiği aralıkta geçerlidir)
+        
+        # Üst Kırılım (Exit Top)
+        cross_up = (curr_closes > top_line) & (np.roll(curr_closes, 1) <= np.roll(top_line, 1))
+        # İlk eleman roll işleminden dolayı hatalı olabilir, düzeltelim
+        cross_up[0] = False 
+
+        # Alt Kırılım (Exit Bottom)
+        cross_down = (curr_closes < btm_line) & (np.roll(curr_closes, 1) >= np.roll(btm_line, 1))
+        cross_down[0] = False
+
+        # --- 4. Grafiğe Ekleme (Plotly) ---
+        
+        # Plotly'de x ekseni olarak tarihleri kullanacağız
+        x_dates = x_axis[subset_slice]
+
+        # Üst Çizgi
+        fig.add_trace(go.Scatter(
+            x=x_dates, y=top_line,
+            mode='lines',
+            line=dict(color='#2962FF', width=2),
+            name='Kanal Üst',
+            hoverinfo='skip'
+        ), row=row, col=1)
+
+        # Alt Çizgi (Üst ile arasını doldur)
+        fig.add_trace(go.Scatter(
+            x=x_dates, y=btm_line,
+            mode='lines',
+            line=dict(color='#2962FF', width=2),
+            name='Kanal Alt',
+            fill='tonexty', # Bir önceki trace (Üst Çizgi) ile arasını boya
+            fillcolor='rgba(41, 98, 255, 0.1)', # Saydam mavi
+            hoverinfo='skip'
+        ), row=row, col=1)
+
+        # Merkez Hat (Opsiyonel - Trend yönünü görmek için)
+        fig.add_trace(go.Scatter(
+            x=x_dates, y=regression_line,
+            mode='lines',
+            line=dict(color='gray', width=1, dash='dot'),
+            name='Regresyon Hattı',
+            hoverinfo='none'
+        ), row=row, col=1)
+
+        # --- 5. Markerlar (Sinyaller) ---
+        if self.show_markers:
+            # Üst Kırılım Noktaları
+            if np.any(cross_up):
+                fig.add_trace(go.Scatter(
+                    x=x_dates[cross_up],
+                    y=curr_closes[cross_up],
+                    mode='markers',
+                    marker=dict(symbol='triangle-up', size=10, color='green'),
+                    name='Yukarı Kırılım',
+                    hoverinfo='x+y'
+                ), row=row, col=1)
+
+            # Alt Kırılım Noktaları
+            if np.any(cross_down):
+                fig.add_trace(go.Scatter(
+                    x=x_dates[cross_down],
+                    y=curr_closes[cross_down],
+                    mode='markers',
+                    marker=dict(symbol='triangle-down', size=10, color='red'),
+                    name='Aşağı Kırılım',
+                    hoverinfo='x+y'
+                ), row=row, col=1)
+
+        return fig
