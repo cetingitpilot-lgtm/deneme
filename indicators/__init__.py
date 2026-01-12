@@ -16,3 +16,8 @@ for f in files:
             MODULLER[module.NAME] = module
     except Exception as e:
         print(f"Modül yüklenemedi {f}: {e}")
+
+# __init__.py dosyasının en altına ekle:
+if "Oto Kanal" not in MODULLER:
+    from . import oto_kanal
+    MODULLER[oto_kanal.NAME] = oto_kanal
