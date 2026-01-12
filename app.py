@@ -7,6 +7,40 @@ from indicators import MODULLER
 
 st.set_page_config(page_title="Pro Terminal", layout="wide")
 
+# --- CSS İLE ZORLA SABİTLEME ---
+# Bu kısım Plotly'nin hesaplamalarını ezip hover kutusunu sol üste kilitler
+st.markdown("""
+    <style>
+    /* Hover kutusunun (tooltip) ana taşıyıcısını yakala */
+    .js-plotly-plot .plotly .hoverlayer {
+        position: absolute !important;
+        top: 0px !important;
+        left: 0px !important;
+        transform: translate(10px, 0px) !important; /* Sol üstten biraz boşluk */
+        pointer-events: none !important;
+        z-index: 1000 !important;
+    }
+
+    /* Hover kutusunun içindeki metin hizalaması */
+    .js-plotly-plot .plotly .hoverlayer .hovertext {
+        text-anchor: start !important; /* Yazıyı sola yasla */
+    }
+
+    /* Kutunun arkasındaki siyah/beyaz fonu ve oku kaldır (Sadece yazı kalsın) */
+    .js-plotly-plot .plotly .hoverlayer .hovertext path {
+        fill: rgba(0,0,0,0) !important; /* Arkaplanı tamamen şeffaf yap */
+        stroke: none !important;        /* Çerçeve çizgisini kaldır */
+    }
+    
+    /* Yazıların okunabilirliğini artır (gölge ekle) */
+    .js-plotly-plot .plotly .hoverlayer .hovertext text {
+        text-shadow: 1px 1px 1px rgba(0,0,0,0.8) !important;
+        font-family: 'Courier New', monospace !important;
+        font-weight: bold !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 with st.sidebar:
     st.header("📊 Kontrol")
     hisse = st.text_input("Hisse", "AAPL").upper()
@@ -14,7 +48,6 @@ with st.sidebar:
     zaman = st.selectbox("Dilim", ["1d", "1h", "1wk"], index=0)
     tema = st.radio("Tema", ["Siyah", "Beyaz"])
     arkaplan = "#0e1117" if tema == "Siyah" else "white"
-    metin_rengi = "white" if tema == "Siyah" else "black"
     
     st.divider()
     secilenler = st.multiselect("İndikatörler", list(MODULLER.keys()), default=["EMA 7", "RSI"])
@@ -33,13 +66,13 @@ try:
 
         x_axis = df.index.strftime("%d/%m %H:%M")
 
-        # 1. Ana Mum Grafiği
+        # 1. Ana Fiyat
         fig.add_trace(go.Candlestick(
             x=x_axis, open=df['Open'], high=df['High'], 
-            low=df['Low'], close=df['Close'], name="FİYAT"
+            low=df['Low'], close=df['Close'], name="OHLC"
         ), row=1, col=1)
 
-        # 2. İndikatörleri Ekle
+        # 2. İndikatörleri Çiz
         current_row = 2
         for isim in secilenler:
             modul = MODULLER[isim]
@@ -49,7 +82,7 @@ try:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 current_row += 1
 
-        # --- TÜM EKSENLERİ VE DİKEY ÇİZGİYİ BAĞLA ---
+        # Dikey Çizgi Ayarları
         fig.update_traces(xaxis="x")
         fig.update_xaxes(
             showspikes=True, spikemode="across", spikesnap="cursor",
@@ -57,7 +90,7 @@ try:
             showgrid=False, zeroline=False
         )
 
-        # --- SABİT SOL ÜST PANEL AYARI (CSS & HOVER) ---
+        # GRAFİK DÜZENİ
         fig.update_layout(
             template="plotly_dark" if tema=="Siyah" else "plotly_white",
             paper_bgcolor=arkaplan, plot_bgcolor=arkaplan,
@@ -65,33 +98,21 @@ try:
             xaxis_rangeslider_visible=False, xaxis_type='category',
             dragmode='pan', showlegend=False,
             margin=dict(r=50, l=10, t=10, b=10),
-            hovermode="x unified",
-            # Hover kutusunun özelliklerini sol üste zorlamak için:
+            
+            # --- ÖNEMLİ KISIM: HOVER MODU ---
+            hovermode="x unified", # Tüm verileri tek listede topla
             hoverlabel=dict(
-                bgcolor="rgba(30, 30, 30, 0.9)" if tema == "Siyah" else "rgba(240, 240, 240, 0.9)",
-                font_size=12,
+                # CSS ile bunları ezeceğiz ama yine de varsayılanı ayarlayalım
+                bgcolor="rgba(0,0,0,0)", 
+                bordercolor="rgba(0,0,0,0)",
+                font_size=13,
                 font_family="Monospace",
-                align="left"
+                align="left",
+                namelength=-1 # İsimleri tam göster
             )
         )
         
         fig.update_yaxes(side="right", showgrid=True, gridcolor="rgba(128,128,128,0.1)")
-
-        # CSS ile Hover kutusunu sol üst köşeye çivileme
-        st.markdown(
-            f"""
-            <style>
-            .js-plotly-plot .hoverlayer .hovertext {{
-                transform: translate(calc(0% + 10px), calc(0% + 10px)) !important;
-                text-align: left !important;
-            }}
-            /* Mouse'un yanındaki varsayılan etiketi gizle */
-            .js-plotly-plot .hoverlayer {{
-                pointer-events: none !important;
-            }}
-            </style>
-            """, unsafe_allow_html=True
-        )
 
         st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 
