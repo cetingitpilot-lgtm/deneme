@@ -60,7 +60,7 @@ def ciz(fig, df, x_axis, row=1):
     fig.add_trace(go.Scatter(
         x=x_dates, y=reg_line,
         mode='lines',
-        line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dot'),
+        line=dict(color='rgba(0, 255, 0, 1)', width=1, dash='dot'),
         name='Trend',
         hoverinfo='none'
     ), row=row, col=1)
