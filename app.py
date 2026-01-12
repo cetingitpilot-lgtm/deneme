@@ -7,44 +7,7 @@ from indicators import MODULLER
 
 st.set_page_config(page_title="Pro Terminal", layout="wide")
 
-# --- CSS SİHİRBAZLIĞI (BU KISIM ÇOK ÖNEMLİ) ---
-# Bu kodlar Plotly'nin hareket mekanizmasını bozar ve kutuyu sol üste kilitler.
-st.markdown("""
-    <style>
-    /* 1. Hover kutusunun (tooltip) yerini zorla sabitle */
-    /* Streamlit içindeki grafik container'ını hedef alıyoruz */
-    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer {
-        transform: translate(10px, 0px) !important; /* Sol üst köşeye (10px içeriden) sabitle */
-        position: absolute !important;
-        top: 0px !important;
-        left: 0px !important;
-        z-index: 10000 !important;
-        pointer-events: none !important; /* Mouse tıklamasını engelleme */
-    }
-
-    /* 2. Kutunun içindeki metinleri düzenle */
-    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer .hovertext text {
-        font-family: 'Monospace', monospace !important;
-        font-size: 12px !important;
-        font-weight: bold !important;
-        fill: #ffffff !important; /* Yazı rengi (Beyaz) */
-        text-shadow: 1px 1px 2px black !important; /* Okunabilirlik için gölge */
-    }
-    
-    /* 3. Kutunun arkasındaki siyah fonu ve ok işaretini tamamen YOK ET */
-    /* Sadece yazılar havada asılı kalsın */
-    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer .hovertext path {
-        fill: rgba(0,0,0,0) !important;
-        stroke: none !important;
-    }
-    
-    /* 4. Çizgi üzerindeki baloncukları gizle (sadece genel kutu kalsın) */
-    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer .spikeline {
-        display: none !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
+# Sidebar Ayarları
 with st.sidebar:
     st.header("📊 Kontrol")
     hisse = st.text_input("Hisse", "AAPL").upper()
@@ -52,13 +15,7 @@ with st.sidebar:
     zaman = st.selectbox("Dilim", ["1d", "1h", "1wk"], index=0)
     tema = st.radio("Tema", ["Siyah", "Beyaz"])
     arkaplan = "#0e1117" if tema == "Siyah" else "white"
-    
-    # CSS içindeki yazı rengini temaya göre ayarla
-    text_color = "white" if tema == "Siyah" else "black"
-    st.markdown(f"""<style>
-    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer .hovertext text {{
-        fill: {text_color} !important;
-    }}</style>""", unsafe_allow_html=True)
+    metin_rengi = "white" if tema == "Siyah" else "black"
     
     st.divider()
     secilenler = st.multiselect("İndikatörler", list(MODULLER.keys()), default=["EMA 7", "RSI"])
@@ -75,12 +32,15 @@ try:
         fig = make_subplots(rows=toplam_satir, cols=1, shared_xaxes=True, 
                            vertical_spacing=0.03, row_heights=satir_oranlari)
 
+        # X ekseni formatı
         x_axis = df.index.strftime("%d/%m %H:%M")
 
-        # 1. Ana Fiyat (İsimlendirmeyi kısalttık)
+        # 1. Ana Fiyat (Mumlar)
         fig.add_trace(go.Candlestick(
             x=x_axis, open=df['Open'], high=df['High'], 
-            low=df['Low'], close=df['Close'], name="OHLC"
+            low=df['Low'], close=df['Close'], name="Fiyat",
+            # Hover kutusunuTradingView stili yapmak için:
+            hovertemplate="A:%{open:.2f} Y:%{high:.2f} D:%{low:.2f} K:%{close:.2f}<extra></extra>"
         ), row=1, col=1)
 
         # 2. İndikatörleri Çiz
@@ -93,38 +53,66 @@ try:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 current_row += 1
 
-        # Dikey Çizgi ve Eksen Ayarları
-        fig.update_traces(xaxis="x")
+        # --- DİKEY ÇİZGİYİ (SPIKE) GERİ GETİRME VE SENKRONİZE ETME ---
+        fig.update_traces(xaxis="x") # Tüm izleri ana X eksenine bağla (Kritik!)
+        
         fig.update_xaxes(
-            showspikes=True, spikemode="across", spikesnap="cursor",
-            spikethickness=1, spikedash="dash", spikecolor="gray",
-            showgrid=False, zeroline=False
+            showspikes=True,
+            spikemode="across", # Tüm panelleri kesen çizgi
+            spikesnap="cursor",
+            spikethickness=1,
+            spikedash="dash",
+            spikecolor="#888",
+            showgrid=False,
+            zeroline=False,
+            rangeslider_visible=False
         )
 
-        # LAYOUT AYARLARI
+        # --- SOL ÜST KÖŞEDE SABİT İSİMLER ---
+        # Her panelin sol üstüne ismini 'paper' koordinatıyla çiviliyoruz
+        current_osc_row = 2
+        for isim in secilenler:
+            if MODULLER[isim].TYPE == "oscillator":
+                fig.add_annotation(
+                    xref="paper", yref=f"y{current_osc_row} domain",
+                    x=0.005, y=0.98, text=f"<b>{isim}</b>",
+                    showarrow=False, font=dict(size=11, color=metin_rengi),
+                    xanchor="left", yanchor="top"
+                )
+                current_osc_row += 1
+        
+        # Ana grafik için isim
+        fig.add_annotation(
+            xref="paper", yref="y domain",
+            x=0.005, y=0.98, text=f"<b>{hisse} - OHLC</b>",
+            showarrow=False, font=dict(size=12, color=metin_rengi),
+            xanchor="left", yanchor="top"
+        )
+
+        # GENEL GÖRÜNÜM AYARLARI
         fig.update_layout(
             template="plotly_dark" if tema=="Siyah" else "plotly_white",
-            paper_bgcolor=arkaplan, plot_bgcolor=arkaplan,
-            height=600,
-            xaxis_rangeslider_visible=False, xaxis_type='category',
-            dragmode='pan', showlegend=False,
-            margin=dict(r=50, l=10, t=10, b=10),
+            paper_bgcolor=arkaplan,
+            plot_bgcolor=arkaplan,
+            height=400 + (len(osc_list)*200),
+            dragmode='pan',
+            showlegend=False,
+            hovermode="x", # "x unified" yerine sadece "x" dikey çizgiyi daha stabil kılar
+            spikedistance=-1, # Çizginin her zaman aktif kalmasını sağlar
+            margin=dict(r=60, l=10, t=30, b=50),
             
-            # --- KRİTİK AYARLAR ---
-            hovermode="x unified", # Tüm verileri birleştir
-            hoverdistance=-1,      # Tüm dikey eksende yakala
+            # Hover kutusunu sol üste sabitlemeyi deneyen en hafif ayar
             hoverlabel=dict(
-                bgcolor="rgba(0,0,0,0)", # Plotly tarafında da şeffaflık verelim
-                bordercolor="rgba(0,0,0,0)",
-                namelength=-1,
-                font=dict(family="Monospace"),
+                bgcolor="rgba(0,0,0,0.6)",
+                font_size=12,
+                font_family="Monospace",
                 align="left"
             )
         )
         
         fig.update_yaxes(side="right", showgrid=True, gridcolor="rgba(128,128,128,0.1)")
         
-        # Gereksiz tarihleri gizle
+        # X ekseni etiketlerini sadece en altta göster
         for i in range(1, toplam_satir):
             fig.update_xaxes(showticklabels=False, row=i, col=1)
         fig.update_xaxes(showticklabels=True, row=toplam_satir, col=1)
