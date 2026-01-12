@@ -129,7 +129,8 @@ try:
             fig.update_xaxes(showticklabels=False, row=i, col=1)
         fig.update_xaxes(showticklabels=True, row=toplam_satir, col=1)
 
-        st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
+        st.plotly_chart(fig, width="stretch", config={'scrollZoom': True})
 
 except Exception as e:
     st.error(f"Hata oluştu: {e}")
+
