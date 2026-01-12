@@ -32,9 +32,11 @@ try:
 
         x_axis = df.index.strftime("%d/%m %H:%M")
 
+        # 1. Ana Fiyat
         fig.add_trace(go.Candlestick(x=x_axis, open=df['Open'], high=df['High'], 
                                    low=df['Low'], close=df['Close'], name="Fiyat"), row=1, col=1)
 
+        # 2. İndikatörleri Çiz
         current_row = 2
         for isim in secilenler:
             modul = MODULLER[isim]
@@ -44,7 +46,20 @@ try:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 current_row += 1
 
-        # GÖRÜNÜM VE DİKEY ÇİZGİ AYARLARI
+        # --- DİKEY ÇİZGİ (SPIKE LINE) TÜM PANELLER İÇİN ---
+        # Bu döngü her bir panelin (row) x eksenine dikey çizgi özelliğini ekler
+        for r in range(1, toplam_satir + 1):
+            fig.update_xaxes(
+                showspikes=True,
+                spikemode="across",
+                spikesnap="cursor",
+                spikethickness=1,
+                spikedash="dash",
+                spikecolor="gray",
+                row=r, col=1
+            )
+
+        # GENEL GÖRÜNÜM AYARLARI
         fig.update_layout(
             template="plotly_dark" if tema=="Siyah" else "plotly_white",
             paper_bgcolor=arkaplan,
@@ -54,18 +69,12 @@ try:
             xaxis_type='category',
             dragmode='pan',
             showlegend=False,
-            hovermode="x unified", # Mouse ile üzerine gelince verileri birleştirir
-            margin=dict(r=100),
-            xaxis=dict(
-                showspikes=True,   # Dikey çizgiyi aç
-                spikemode="across",# Tüm grafiği boydan boya kes
-                spikethickness=1,
-                spikedash="dash",  # Kesik çizgi formatı
-                spikecolor="gray"  # Her iki zeminde de görünen gri
-            )
+            hovermode="x unified",
+            margin=dict(r=100, t=50, b=50)
         )
         
         fig.update_yaxes(side="right")
+        # Sadece en alt panelde tarihleri göster
         fig.update_xaxes(showticklabels=True, row=toplam_satir, col=1)
 
         st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
