@@ -35,24 +35,28 @@ try:
             df[f'EMA{p}'] = ta.ema(df['Close'], length=p)
         df['RSI'] = ta.rsi(df['Close'], length=14)
 
-        # GRAFİK YAPISI
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+        # GRAFİK YAPISI (RSI kapalıysa tek panel, açıksa çift panel)
+        if show_rsi:
+            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+        else:
+            fig = make_subplots(rows=1, cols=1)
+
         x_axis = df.index.strftime("%d/%m %H:%M")
         
-        # 1. Mum Grafiği (Eksen: y1)
+        # 1. Mum Grafiği
         fig.add_trace(go.Candlestick(
             x=x_axis, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
             name="Fiyat"
         ), row=1, col=1)
 
-        # EMA'lar (Eksen: y1)
+        # EMA'lar
         colors = {7: 'yellow', 14: 'cyan', 30: 'magenta'}
         for p in ema_list:
             if not pd.isna(df[f'EMA{p}'].iloc[-1]):
                 fig.add_trace(go.Scatter(x=x_axis, y=df[f'EMA{p}'], 
                                          line=dict(width=1.5, color=colors[p]), name=f"EMA {p}"), row=1, col=1)
 
-        # RSI Paneli (Eksen: y2)
+        # RSI Paneli
         if show_rsi:
             fig.add_trace(go.Scatter(x=x_axis, y=df['RSI'], line=dict(color='#7e57c2', width=2), name="RSI"), row=2, col=1)
             fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1, opacity=0.3)
@@ -68,28 +72,29 @@ try:
             xaxis_type='category',
             showlegend=False,
             dragmode='pan',
-            margin=dict(r=120, l=10, t=50, b=10)
+            margin=dict(r=120, l=10, t=50, b=50) # Alt marjı (b) artırdık
         )
         
-        fig.update_yaxes(side="right", row=1, col=1, showgrid=True, nticks=20)
-        fig.update_yaxes(side="right", row=2, col=1, showgrid=True)
+        # X Eksenini Her Durumda Görünür Yapma
+        fig.update_xaxes(showticklabels=True, row=1, col=1)
+        if show_rsi:
+            fig.update_xaxes(showticklabels=True, row=2, col=1)
 
-        # --- ETİKETLER (ANNOTATIONS) ---
-        # Üst Panel (Fiyat & EMA) Etiketleri
+        fig.update_yaxes(side="right", row=1, col=1, showgrid=True, nticks=20)
+        if show_rsi:
+            fig.update_yaxes(side="right", row=2, col=1, showgrid=True)
+
+        # --- ETİKETLER ---
         last_price = df['Close'].iloc[-1]
-        
-        # Son Fiyat Etiketi
         fig.add_annotation(xref="paper", yref="y1", x=1.005, y=last_price, text=f" {last_price:.2f} ",
                           showarrow=False, bgcolor="gray", font=dict(color="white", size=11), xanchor="left")
 
-        # EMA Etiketleri
         for p in ema_list:
             val = df[f'EMA{p}'].iloc[-1]
             if not pd.isna(val):
                 fig.add_annotation(xref="paper", yref="y1", x=1.005, y=val, text=f" E{p}:{val:.2f} ",
                                   showarrow=False, bgcolor=colors[p], font=dict(color="white", size=10), xanchor="left")
 
-        # RSI Etiketi (Alt Panel için yref="y2" kullanıyoruz)
         if show_rsi:
             last_rsi = df['RSI'].iloc[-1]
             if not pd.isna(last_rsi):
