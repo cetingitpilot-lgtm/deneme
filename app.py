@@ -27,7 +27,6 @@ try:
         toplam_satir = 1 + len(osc_list)
         satir_oranlari = [0.6] + [0.4/len(osc_list) if osc_list else 0] * len(osc_list)
 
-        # shared_xaxes=True burada kritik, alt panellerin X eksenini birbirine bağlar
         fig = make_subplots(rows=toplam_satir, cols=1, shared_xaxes=True, 
                            vertical_spacing=0.03, row_heights=satir_oranlari)
 
@@ -47,17 +46,19 @@ try:
                 fig = modul.ciz(fig, df, x_axis, row=current_row)
                 current_row += 1
 
-        # --- DİKEY ÇİZGİ AYARLARI (GÜNCELLENDİ) ---
-        # Tüm grafiklerde (x, x2, x3...) aynı anda dikey çizgiyi zorunlu kılıyoruz
+        # --- KRİTİK DÜZELTME: TÜM VERİLERİ TEK BİR X EKSENİNE BAĞLA ---
+        fig.update_traces(xaxis="x") 
+
+        # --- DİKEY ÇİZGİ AYARLARI ---
         fig.update_xaxes(
             showspikes=True,
-            spikemode="across",
+            spikemode="across+marker", # "across" tüm satırları kesmesini sağlar
             spikesnap="cursor",
             spikethickness=1,
             spikedash="dash",
             spikecolor="gray",
-            # Bu ayar çok önemli: Tüm panellerin spike'larını tek bir x eksenine göre tetikler
-            matches='x' 
+            showline=True,
+            showgrid=True
         )
 
         # GENEL GÖRÜNÜM AYARLARI
@@ -70,14 +71,15 @@ try:
             xaxis_type='category',
             dragmode='pan',
             showlegend=False,
-            hovermode="x unified", # Verileri tek bir kutuda birleştirir
-            hoverdistance=100,      # Mouse yaklaştığında tetiklenme hassasiyeti
-            spikedistance=-1,       # Çizgiyi tüm grafik boyunca (yukarı-aşağı) sonsuz yapar
+            hovermode="x unified",
+            spikedistance=-1, # Spike'ın tüm grafiği (en üstten en alta) taramasını zorunlu kılar
+            hoverdistance=100,
             margin=dict(r=100, t=50, b=50)
         )
         
         fig.update_yaxes(side="right")
-        # Sadece en alt panelde tarihleri göster, diğerlerini gizle
+        
+        # Gereksiz tarih etiketlerini temizle, sadece en altta kalsın
         for i in range(1, toplam_satir):
             fig.update_xaxes(showticklabels=False, row=i, col=1)
         fig.update_xaxes(showticklabels=True, row=toplam_satir, col=1)
