@@ -1,111 +1,110 @@
 import streamlit as st
 import yfinance as yf
-import pandas as pd
-from plotly.subplots import make_subplots
 import plotly.graph_objects as go
-from indicators import MODULLER
+from plotly.subplots import make_subplots
+import indicators
 
-st.set_page_config(page_title="Pro Terminal", layout="wide")
+st.set_page_config(layout="wide")
 
-# --- CSS (Hover Sabitleme) ---
-st.markdown("""
-    <style>
-    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer {
-        transform: translate(10px, 0px) !important;
-        position: absolute !important;
-        top: 0px !important;
-        left: 0px !important;
-        z-index: 10000 !important;
-        pointer-events: none !important;
-    }
-    [data-testid="stPlotlyChart"] .js-plotly-plot .plotly .hoverlayer .hovertext text {
-        font-family: 'Monospace', monospace !important;
-        font-size: 12px !important;
-        font-weight: bold !important;
-        fill: #ffffff !important;
-        text-shadow: 1px 1px 2px black !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+st.sidebar.title("📊 Teknik Analiz")
 
-with st.sidebar:
-    st.header("📊 Kontrol")
-    hisse = st.text_input("Hisse", "AAPL").upper()
-    periyot = st.selectbox("Geçmiş", ["1mo", "3mo", "6mo", "1y", "5y"], index=2)
-    zaman = st.selectbox("Dilim", ["1d", "1h", "1wk"], index=0)
-    tema = st.radio("Tema", ["Siyah", "Beyaz"])
-    arkaplan = "#0e1117" if tema == "Siyah" else "white"
-    
-    st.divider()
-    secilenler = st.multiselect("İndikatörler", list(MODULLER.keys()), default=["EMA 7", "RSI"])
+symbol = st.sidebar.text_input("Hisse / Kripto", "AAPL")
+period = st.sidebar.selectbox("Zaman Aralığı", ["1mo", "3mo", "6mo", "1y", "2y"])
+interval = st.sidebar.selectbox("Periyot", ["1d", "1h", "1wk"])
 
-try:
-    df = yf.download(hisse, period=periyot, interval=zaman)
-    if not df.empty:
-        if isinstance(df.columns, pd.MultiIndex): 
-            df.columns = df.columns.get_level_values(0)
-        
-        osc_list = [i for i in secilenler if MODULLER[i].TYPE == "oscillator"]
-        toplam_satir = 1 + len(osc_list)
-        satir_oranlari = [0.6] + [0.4/len(osc_list) if osc_list else 0] * len(osc_list)
+indicator_names = list(indicators.MODULLER.keys())
+selected = st.sidebar.multiselect(
+    "İndikatörler",
+    indicator_names,
+    default=["EMA 7", "RSI"]
+)
 
-        # vertical_spacing: Tarihlerin sığması için 0.12 gibi geniş bir boşluk bıraktık
-        fig = make_subplots(rows=toplam_satir, cols=1, shared_xaxes=True, 
-                            vertical_spacing=0.12, row_heights=satir_oranlari)
+df = yf.download(symbol, period=period, interval=interval)
 
-        x_axis = df.index.strftime("%d/%m %H:%M")
+if df.empty:
+    st.error("Veri alınamadı")
+    st.stop()
 
-        # 1. Ana Fiyat
-        fig.add_trace(go.Candlestick(
-            x=x_axis, open=df['Open'], high=df['High'], 
-            low=df['Low'], close=df['Close'], name="OHLC"
-        ), row=1, col=1)
+osc_count = sum(
+    1 for i in selected if indicators.MODULLER[i].TYPE == "oscillator"
+)
 
-        # 2. İndikatörler
-        current_row = 2
-        for isim in secilenler:
-            modul = MODULLER[isim]
-            if modul.TYPE == "overlay":
-                fig = modul.ciz(fig, df, x_axis, row=1)
-            else:
-                fig = modul.ciz(fig, df, x_axis, row=current_row)
-                current_row += 1
+rows = 1 + osc_count
 
-        # 3. Eksen ve Tarih Ayarları (Hata düzeltildi)
-        for i in range(1, toplam_satir + 1):
-            if i == 1:
-                # Sadece üstteki grafikte tarihleri göster
-                fig.update_xaxes(
-                    type='category', # Hatalı olan 'xaxis_type' yerine 'type' kullanıldı
-                    showticklabels=True, 
-                    tickangle=-45, 
-                    tickfont=dict(size=10),
-                    showgrid=False,
-                    row=1, col=1
-                )
-            else:
-                # Alt grafiklerin tarih etiketlerini kapat
-                fig.update_xaxes(type='category', showticklabels=False, row=i, col=1)
+fig = make_subplots(
+    rows=rows,
+    cols=1,
+    shared_xaxes=True,
+    vertical_spacing=0.03,
+    row_heights=[0.5] + [0.5 / osc_count] * osc_count if osc_count > 0 else [1]
+)
 
-        # 4. Spike (Dikey Çizgi) Ayarları
-        fig.update_xaxes(showspikes=True, spikemode="across", spikesnap="cursor",
-                         spikethickness=1, spikedash="dash", spikecolor="gray")
+# === ANA FİYAT GRAFİĞİ ===
+fig.add_candlestick(
+    x=df.index,
+    open=df["Open"],
+    high=df["High"],
+    low=df["Low"],
+    close=df["Close"],
+    name="Fiyat",
+    row=1,
+    col=1
+)
 
-        # 5. Genel Layout
-        fig.update_layout(
-            template="plotly_dark" if tema=="Siyah" else "plotly_white",
-            paper_bgcolor=arkaplan, plot_bgcolor=arkaplan,
-            height=700,
-            xaxis_rangeslider_visible=False,
-            dragmode='pan', showlegend=False,
-            margin=dict(r=50, l=10, t=10, b=10),
-            hovermode="x unified",
-            hoverdistance=-1
+current_row = 2
+
+for name in selected:
+    mod = indicators.MODULLER[name]
+
+    if mod.TYPE == "overlay":
+        fig = mod.ciz(fig, df, df.index, 1)
+
+    else:
+        fig = mod.ciz(fig, df, df.index, current_row)
+
+        # ❌ Oscillator çizgileri kapat
+        fig.update_yaxes(
+            showline=False,
+            zeroline=False,
+            row=current_row,
+            col=1
         )
-        
-        fig.update_yaxes(side="right", showgrid=True, gridcolor="rgba(128,128,128,0.1)")
 
-        st.plotly_chart(fig, width="stretch", config={'scrollZoom': True})
+        current_row += 1
 
-except Exception as e:
-    st.error(f"Hata oluştu: {e}")
+# === TÜM GRAFİKLERDE ORTAK DİKEY ÇİZGİ ===
+fig.update_layout(
+    hovermode="x unified",
+    spikedistance=-1
+)
+
+fig.update_xaxes(
+    showspikes=True,
+    spikemode="across",
+    spikesnap="cursor",
+    spikecolor="gray",
+    spikethickness=1
+)
+
+# ❌ Mouse ile gezen hover kapalı
+fig.update_traces(hoverinfo="skip")
+
+# === SABİT BİLGİ PANELİ ===
+fig.add_annotation(
+    xref="paper",
+    yref="paper",
+    x=0.01,
+    y=0.98,
+    showarrow=False,
+    align="left",
+    bgcolor="rgba(0,0,0,0.75)",
+    font=dict(size=11, color="white"),
+    text="Hover için mum üzerinde gez"
+)
+
+fig.update_layout(
+    height=900,
+    margin=dict(l=20, r=20, t=40, b=20)
+)
+
+st.plotly_chart(fig, use_container_width=True)
