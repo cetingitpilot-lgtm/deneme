@@ -7,9 +7,10 @@ TYPE = "overlay"
 def ciz(fig, df, x_axis, row):
     bb = ta.bbands(df["Close"], length=20, std=2)
 
-    lower = bb["BBL_20_2.0"]
-    middle = bb["BBM_20_2.0"]
-    upper = bb["BBU_20_2.0"]
+    # HER SÜRÜM İÇİN GÜVENLİ OKUMA
+    lower = bb.iloc[:, 0]
+    middle = bb.iloc[:, 1]
+    upper = bb.iloc[:, 2]
 
     fig.add_scatter(
         x=x_axis,
@@ -25,7 +26,7 @@ def ciz(fig, df, x_axis, row):
         y=lower,
         line=dict(color="rgba(0,200,255,0.7)", width=1),
         fill="tonexty",
-        fillcolor="rgba(0,200,255,0.1)",
+        fillcolor="rgba(0,200,255,0.12)",
         name="BB Alt",
         row=row,
         col=1
