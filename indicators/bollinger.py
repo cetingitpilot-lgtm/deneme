@@ -1,30 +1,43 @@
 import pandas_ta as ta
 import plotly.graph_objects as go
 
-NAME = "Bollinger Bands"
+NAME = "Bollinger"
 TYPE = "overlay"
 
 def ciz(fig, df, x_axis, row):
-    # Bollinger bantlarını hesapla
-    bb = ta.bbands(df['Close'], length=20, std=2)
-    
-    # Sütun isimleri bazen değişebildiği için ilk sütun Alt, orta sütun Orta, son sütun Üst banttır
-    # bb.iloc[:, 0] -> Alt Bant, bb.iloc[:, 2] -> Üst Bant
-    
-    # Üst Bant (Şeffaf çizgi)
-    fig.add_trace(go.Scatter(
-        x=x_axis, y=bb.iloc[:, 2], 
-        name="BB Üst", 
-        line=dict(width=1, color='rgba(173, 216, 230, 0.4)')
-    ), row=1, col=1)
-    
-    # Alt Bant ve Aradaki Dolgu
-    fig.add_trace(go.Scatter(
-        x=x_axis, y=bb.iloc[:, 0], 
-        name="BB Alt", 
-        fill='tonexty', # Bir önceki trace (Üst Bant) ile arasını doldurur
-        fillcolor='rgba(173, 216, 230, 0.1)',
-        line=dict(width=1, color='rgba(173, 216, 230, 0.4)')
-    ), row=1, col=1)
-    
+    bb = ta.bbands(df["Close"], length=20, std=2)
+
+    lower = bb["BBL_20_2.0"]
+    middle = bb["BBM_20_2.0"]
+    upper = bb["BBU_20_2.0"]
+
+    fig.add_scatter(
+        x=x_axis,
+        y=upper,
+        line=dict(color="rgba(0,200,255,0.7)", width=1),
+        name="BB Üst",
+        row=row,
+        col=1
+    )
+
+    fig.add_scatter(
+        x=x_axis,
+        y=lower,
+        line=dict(color="rgba(0,200,255,0.7)", width=1),
+        fill="tonexty",
+        fillcolor="rgba(0,200,255,0.1)",
+        name="BB Alt",
+        row=row,
+        col=1
+    )
+
+    fig.add_scatter(
+        x=x_axis,
+        y=middle,
+        line=dict(color="rgba(0,200,255,0.4)", dash="dot"),
+        name="BB Orta",
+        row=row,
+        col=1
+    )
+
     return fig
