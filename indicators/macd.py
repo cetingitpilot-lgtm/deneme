@@ -1,65 +1,30 @@
-import pandas as pd
+import pandas_ta as ta
 import plotly.graph_objects as go
 
-NAME = "MACD"
-TYPE = "oscillator"
+def ciz(fig, df, x, row):
+    macd = ta.macd(df["Close"])
 
-def _get_close(df):
-    close = df["Close"]
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
-    return close
-
-def ciz(fig, df, x_axis, row):
-    close = _get_close(df)
-
-    # === MACD (MANUEL, STABİL) ===
-    ema12 = close.ewm(span=12, adjust=False).mean()
-    ema26 = close.ewm(span=26, adjust=False).mean()
-
-    macd = ema12 - ema26
-    signal = macd.ewm(span=9, adjust=False).mean()
-    hist = macd - signal
+    macd_line = macd.iloc[:, 0]
+    signal = macd.iloc[:, 1]
+    hist = macd.iloc[:, 2]
 
     colors = ["green" if v >= 0 else "red" for v in hist]
 
-    fig.add_bar(
-        x=x_axis,
+    fig.add_trace(go.Bar(
+        x=x,
         y=hist,
         marker_color=colors,
-        name="Histogram",
-        row=row,
-        col=1
-    )
+        name="MACD Hist"
+    ))
 
-    fig.add_scatter(
-        x=x_axis,
-        y=macd,
-        name="MACD",
-        line=dict(color="dodgerblue", width=1.5),
-        row=row,
-        col=1
-    )
+    fig.add_trace(go.Scatter(x=x, y=macd_line, name="MACD", line=dict(color="blue")))
+    fig.add_trace(go.Scatter(x=x, y=signal, name="Signal", line=dict(color="orange")))
 
-    fig.add_scatter(
-        x=x_axis,
-        y=signal,
-        name="Signal",
-        line=dict(color="orange", width=1),
-        row=row,
-        col=1
-    )
-
-    # SABİT BAŞLIK
     fig.add_annotation(
-        text=NAME,
-        xref="paper",
-        yref="paper",
-        x=0.01,
-        y=1 - (row - 1) * 0.18,
-        showarrow=False,
-        font=dict(size=12, color="white"),
-        bgcolor="rgba(0,0,0,0.5)"
+        xref="paper", yref="paper",
+        x=0.01, y=0.95,
+        text="MACD",
+        showarrow=False
     )
 
     return fig
