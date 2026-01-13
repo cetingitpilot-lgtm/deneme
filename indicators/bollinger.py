@@ -1,15 +1,9 @@
-import pandas_ta as ta
 import plotly.graph_objects as go
+import pandas_ta as ta
 
-def ciz(fig, df, x, row):
-    bb = ta.bbands(df["Close"], length=20)
+BILGI = {"ad": "Bollinger", "tip": "overlay"}
 
-    lower = bb.iloc[:, 0]
-    middle = bb.iloc[:, 1]
-    upper = bb.iloc[:, 2]
-
-    fig.add_trace(go.Scatter(x=x, y=upper, name="BB Upper", line=dict(color="gray")))
-    fig.add_trace(go.Scatter(x=x, y=middle, name="BB Middle", line=dict(color="blue")))
-    fig.add_trace(go.Scatter(x=x, y=lower, name="BB Lower", line=dict(color="gray")))
-
-    return fig
+def çiz(fig, df, row):
+    bb = ta.bbands(df['Close'])
+    fig.add_trace(go.Scatter(x=df.index, y=bb['BBU_20_2.0'], name='BB Üst', line=dict(width=1, color='gray')), row=row, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=bb['BBL_20_2.0'], name='BB Alt', line=dict(width=1, color='gray'), fill='tonexty'), row=row, col=1)
