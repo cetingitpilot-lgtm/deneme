@@ -4,10 +4,16 @@ import plotly.graph_objects as go
 NAME = "MACD"
 TYPE = "oscillator"
 
-def ciz(fig, df, x_axis, row):
+def _get_close(df):
     close = df["Close"]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+    return close
 
-    # === MACD HESAPLAMA (MANUEL) ===
+def ciz(fig, df, x_axis, row):
+    close = _get_close(df)
+
+    # === MACD (MANUEL, STABİL) ===
     ema12 = close.ewm(span=12, adjust=False).mean()
     ema26 = close.ewm(span=26, adjust=False).mean()
 
