@@ -1,16 +1,10 @@
-import pandas_ta as ta
 import plotly.graph_objects as go
+import pandas_ta as ta
 
-def ciz(fig, df, x, row):
-    rsi = ta.rsi(df["Close"])
+BILGI = {"ad": "RSI (14)", "tip": "oscillator"}
 
-    fig.add_trace(go.Scatter(x=x, y=rsi, name="RSI", line=dict(color="purple")))
-
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=0.01, y=0.90,
-        text="RSI",
-        showarrow=False
-    )
-
-    return fig
+def çiz(fig, df, row):
+    df['RSI'] = ta.rsi(df['Close'], length=14)
+    fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='#7E57C2')), row=row, col=1)
+    fig.add_hline(y=70, line_dash="dash", line_color="rgba(255,0,0,0.5)", row=row, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color="rgba(0,255,0,0.5)", row=row, col=1)
