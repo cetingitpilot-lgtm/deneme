@@ -1,12 +1,19 @@
-import pandas_ta as ta
+import pandas as pd
 import plotly.graph_objects as go
 
 NAME = "MACD"
 TYPE = "oscillator"
 
 def ciz(fig, df, x_axis, row):
-    macd = ta.macd(df["Close"])
-    hist = macd["MACDh_12_26_9"]
+    close = df["Close"]
+
+    # === MACD HESAPLAMA (MANUEL) ===
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    hist = macd - signal
 
     colors = ["green" if v >= 0 else "red" for v in hist]
 
@@ -21,18 +28,18 @@ def ciz(fig, df, x_axis, row):
 
     fig.add_scatter(
         x=x_axis,
-        y=macd["MACD_12_26_9"],
+        y=macd,
         name="MACD",
-        line=dict(color="blue"),
+        line=dict(color="dodgerblue", width=1.5),
         row=row,
         col=1
     )
 
     fig.add_scatter(
         x=x_axis,
-        y=macd["MACDs_12_26_9"],
+        y=signal,
         name="Signal",
-        line=dict(color="orange"),
+        line=dict(color="orange", width=1),
         row=row,
         col=1
     )
