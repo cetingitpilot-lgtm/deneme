@@ -1,17 +1,9 @@
-import pandas_ta as ta
 import plotly.graph_objects as go
+import pandas_ta as ta
 
-def ciz(fig, df, x, row):
-    srsi = ta.stochrsi(df["Close"])
+BILGI = {"ad": "Stoch RSI", "tip": "oscillator"}
 
-    fig.add_trace(go.Scatter(x=x, y=srsi.iloc[:, 0], name="StochRSI K"))
-    fig.add_trace(go.Scatter(x=x, y=srsi.iloc[:, 1], name="StochRSI D"))
-
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=0.01, y=0.85,
-        text="Stoch RSI",
-        showarrow=False
-    )
-
-    return fig
+def çiz(fig, df, row):
+    stoch = ta.stochrsi(df['Close'])
+    fig.add_trace(go.Scatter(x=df.index, y=stoch['STOCHRSIk_14_14_3_3'], name='Stoch K'), row=row, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=stoch['STOCHRSId_14_14_3_3'], name='Stoch D'), row=row, col=1)
