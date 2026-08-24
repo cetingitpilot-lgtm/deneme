@@ -13,8 +13,6 @@ symbol = st.sidebar.text_input("Sembol (Örn: BTC-USD veya THYAO.IS)", "BTC-USD"
 
 @st.cache_data(ttl=900)
 def veri_cek(sembol):
-    # KRİTİK DÜZELTME: İndikatörlerin (MACD, Bollinger) hesaplanabilmesi için 
-    # period="1d" yerine period="5d" kullanıyoruz. Böylece yeterli bar (mum) sayısı sağlanır.
     df = yf.download(sembol, period="5d", interval="15m")
     
     if df.empty:
@@ -24,10 +22,9 @@ def veri_cek(sembol):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [col[0] for col in df.columns]
     
-    # Tüm harfleri ilk harfi büyük formata zorla (Open, High, Low, Close, Volume)
+    # Tüm harfleri ilk harfi büyük formata zorla
     df.columns = [str(c).capitalize() for c in df.columns]
     
-    # Eksik verileri (NaN) temizle
     df = df.dropna()
     
     # Tüm sütunların float tipinde olduğundan emin ol
@@ -35,15 +32,19 @@ def veri_cek(sembol):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
             
-    # Dönüşüm sonrası tekrar oluşabilecek NaN'ları at
     df = df.dropna()
+    
+    # TRADINGVIEW GAPLESS (BOŞLUKSUZ) GÖRÜNÜM ÇÖZÜMÜ:
+    # İndeksi datetime'dan çıkarıp düz metne (string) çeviriyoruz.
+    # Böylece Plotly hafta sonu/gece gibi verisiz zamanları atlayıp barları yan yana dizer.
+    df.index = df.index.strftime('%Y-%m-%d %H:%M')
     
     return df
 
 # Veriyi çekelim
 df = veri_cek(symbol)
 
-# MACD (26) ve Bollinger (20) için en az 30 bar olması şarttır
+# MACD ve Bollinger için en az 30 bar olması şarttır
 if not df.empty and len(df) > 30:
     # 2. DİNAMİK İNDİKATÖR YÜKLEME
     overlay_mods = []
@@ -96,7 +97,6 @@ if not df.empty and len(df) > 30:
         try:
             mod.çiz(fig, df, row=i)
             
-            # Alt grafikler için sabit başlık
             fig.add_annotation(
                 text=f"<b>{mod.BILGI['ad']}</b>",
                 xref=f"x{i} domain", yref=f"y{i} domain",
@@ -119,7 +119,19 @@ if not df.empty and len(df) > 30:
         xaxis_rangeslider_visible=False
     )
 
-    # Ana fiyat paneli için sabit başlık (Plotly ValueError hatasını çözen kısım)
+    # GAPLESS GÖRÜNÜM İÇİN X EKSENİ (KATEGORİ) AYARLARI
+    fig.update_xaxes(
+        type='category',          # Ekseni zaman bazlı olmaktan çıkarıp kategoriye zorlar
+        nticks=12,                # Ekranda çok fazla tarih etiketi çıkıp karmaşa yaratmasını engeller
+        showspikes=True,          # İmleç ile hareket eden dikey crosshair
+        spikemode="across",
+        spikesnap="cursor",
+        spikedash="dash",
+        spikecolor="#888888",
+        spikethickness=1
+    )
+
+    # Ana fiyat paneli için sabit başlık
     fig.add_annotation(
         text=f"<b>{symbol} - VERİ PANELİ</b>",
         xref="paper", yref="paper",
