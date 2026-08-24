@@ -1,240 +1,133 @@
 import streamlit as st
 import yfinance as yf
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import importlib
-import indicators
 import pandas as pd
 from datetime import datetime, timedelta
+from lightweight_charts.widgets import StreamlitChart # YENİ KÜTÜPHANE
 
-# --- SAYFA YAPILANDIRMASI ---
-st.set_page_config(layout="wide", page_title="Gemini Finansal Analiz")
+st.set_page_config(layout="wide", page_title="Gemini Finansal Analiz (TV Engine)")
 
-# --- 1. YAN PANEL (SIDEBAR) BİLEŞENLERİ ---
+# --- 1. YAN PANEL (SIDEBAR) ---
 st.sidebar.header("Grafik Ayarları")
 symbol = st.sidebar.text_input("Sembol (Örn: BTC-USD veya THYAO.IS)", "BTC-USD")
 
 timeframes = {
-    "1 Dakika": "1m",
-    "5 Dakika": "5m",
     "15 Dakika": "15m",
     "1 Saat": "1h",
-    "1 Gün": "1d",
-    "1 Hafta": "1wk"
+    "1 Gün": "1d"
 }
-
-secilen_tf_etiket = st.sidebar.selectbox(
-    "Zaman Dilimi (Timeframe)", 
-    options=list(timeframes.keys()), 
-    index=2 # Varsayılan: 15 Dakika
-)
-interval_degeri = timeframes[secilen_tf_etiket]
+secilen_tf_etiket = st.sidebar.selectbox("Zaman Dilimi", options=list(timeframes.keys()), index=0)
+interval = timeframes[secilen_tf_etiket]
 
 # Tarih Aralığı Seçimi
 bugun = datetime.now()
-varsayilan_baslangic = bugun - timedelta(days=30) # Varsayılan olarak son 30 gün
-
-tarih_araligi = st.sidebar.date_input(
-    "Tarih Aralığı",
-    value=(varsayilan_baslangic, bugun),
-    max_value=bugun
-)
+varsayilan_baslangic = bugun - timedelta(days=30)
+tarih_araligi = st.sidebar.date_input("Tarih Aralığı", value=(varsayilan_baslangic, bugun), max_value=bugun)
 
 # --- 2. VERİ ÇEKME FONKSİYONU ---
 @st.cache_data(ttl=900)
-def veri_cek(sembol, interval):
-    # Zaman dilimine göre yfinance'in izin verdiği maksimum geçmişi ayarlıyoruz
-    if interval == "1m":
-        donem = "7d"
-    elif interval in ["5m", "15m"]:
-        donem = "60d"
-    elif interval == "1h":
-        donem = "730d"
-    else:
-        donem = "max"
-
-    # Veriyi çek
-    df = yf.download(sembol, period=donem, interval=interval)
+def veri_cek(sembol, iv):
+    donem = "60d" if iv in ["5m", "15m"] else "730d" if iv == "1h" else "max"
+    df = yf.download(sembol, period=donem, interval=iv)
     
-    if df.empty:
-        return df
+    if df.empty: return df
         
-    # MultiIndex düzeltmesi
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [col[0] for col in df.columns]
     
-    # Sütun isimlerini standartlaştır (Open, High, Low, Close, Volume)
     df.columns = [str(c).capitalize() for c in df.columns]
     df = df.dropna()
-    
-    # Tüm sütunların float tipinde olduğundan emin ol
     for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            
     df = df.dropna()
+    
+    # LIGHTWEIGHT CHARTS İÇİN KRİTİK VERİ YAPISI
+    # İndeks "time" adında bir sütun olmak ZORUNDA.
+    df.reset_index(inplace=True)
+    
+    # Sütun adını standart 'time' veya 'Date' yapıyoruz
+    if 'Datetime' in df.columns:
+        df.rename(columns={'Datetime': 'time'}, inplace=True)
+    elif 'Date' in df.columns:
+        df.rename(columns={'Date': 'time'}, inplace=True)
+    
     return df
 
-# Veriyi çekiyoruz
-df = veri_cek(symbol, interval_degeri)
+df = veri_cek(symbol, interval)
 
-# --- 3. VERİYİ TARİH ARALIĞINA GÖRE FİLTRELEME ---
+# --- 3. TARİH FİLTRESİ ---
 if not df.empty and len(tarih_araligi) == 2:
     baslangic_tarihi, bitis_tarihi = tarih_araligi
-    
-    # yfinance indekslerindeki timezone bilgisini temizliyoruz ki filtreleme hata vermesin
-    df.index = df.index.tz_localize(None) 
-    
-    # Bitiş tarihine 1 gün ekliyoruz ki seçilen son günün içindeki saatleri de kapsasın
+    df['time'] = df['time'].dt.tz_localize(None) 
     bitis_tarihi = bitis_tarihi + timedelta(days=1)
-    
-    # Veriyi maskeleyip daraltıyoruz
-    mask = (df.index >= pd.to_datetime(baslangic_tarihi)) & (df.index <= pd.to_datetime(bitis_tarihi))
+    mask = (df['time'] >= pd.to_datetime(baslangic_tarihi)) & (df['time'] <= pd.to_datetime(bitis_tarihi))
     df = df.loc[mask]
 
-# Filtreleme sonrası Gapless (boşluksuz) formatı için indeksi string'e dönüştürüyoruz
-if not df.empty:
-    if interval_degeri in ["1d", "1wk"]:
-        df.index = df.index.strftime('%Y-%m-%d')
-    else:
-        df.index = df.index.strftime('%Y-%m-%d %H:%M')
-
-# En az 30 bar kontrolü (İndikatörlerin sağlıklı hesaplanabilmesi için)
+# Veri uygunsa grafiği çiz
 if not df.empty and len(df) > 30:
+    st.markdown(f"### {symbol} - {secilen_tf_etiket.upper()}")
     
-    # --- DİNAMİK İNDİKATÖR YÜKLEME ---
-    overlay_mods = []
-    oscillator_mods = []
-
-    for ind_name in indicators.indicator_list:
-        try:
-            mod = importlib.import_module(f"indicators.{ind_name}")
-            if hasattr(mod, 'BILGI'):
-                if mod.BILGI["tip"] == "overlay":
-                    overlay_mods.append(mod)
-                else:
-                    oscillator_mods.append(mod)
-        except Exception as e:
-            st.sidebar.error(f"{ind_name} yüklenirken hata: {str(e)}")
-
-    # Grafik Yapısı
-    num_oscs = len(oscillator_mods)
+    # ---------------------------------------------------------
+    # TRADINGVIEW (LIGHTWEIGHT) CHART OLUŞTURMA
+    # ---------------------------------------------------------
     
-    if num_oscs > 0:
-        row_heights = [0.6] + [0.4 / num_oscs] * num_oscs
-    else:
-        row_heights = [1.0]
-
-    fig = make_subplots(
-        rows=1 + num_oscs, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.01, # Paneller arası boşluğu azalttık
-        row_heights=row_heights
-    )
-
-    # --- 4. TRADINGVIEW STİLİ CANDLESTICK (FİYAT) ÇİZİMİ ---
-    fig.add_trace(
-        go.Candlestick(
-            x=df.index, open=df['Open'], high=df['High'], 
-            low=df['Low'], close=df['Close'], name="Fiyat",
-            increasing_line_color='#26a69a', increasing_fillcolor='#26a69a', # TV Yükselen mum
-            decreasing_line_color='#ef5350', decreasing_fillcolor='#ef5350'  # TV Düşen mum
-        ), 
-        row=1, col=1
-    )
-
-    # Overlay İndikatörleri Çiz
-    for mod in overlay_mods:
-        try:
-            mod.çiz(fig, df, row=1)
-        except Exception as e:
-            st.sidebar.warning(f"{mod.BILGI['ad']} hata verdi: {str(e)}")
-
-    # Oscillator İndikatörleri Çiz ve Etiketle
-    for i, mod in enumerate(oscillator_mods, start=2):
-        try:
-            mod.çiz(fig, df, row=i)
-            
-            # Alt panellerdeki indikatör isimleri
-            fig.add_annotation(
-                text=f"<b>{mod.BILGI['ad']}</b>",
-                xref=f"x{i} domain", yref=f"y{i} domain",
-                x=0.01, y=0.95, showarrow=False,
-                xanchor="left", yanchor="top", 
-                font=dict(color="#d1d4dc", size=11), 
-                bgcolor="rgba(19, 23, 34, 0.7)" 
-            )
-        except Exception as e:
-            st.sidebar.warning(f"{mod.BILGI['ad']} hata verdi: {str(e)}")
-
-    # --- 5. TRADINGVIEW GÖRÜNÜM VE EKSEN AYARLARI ---
-    fig.update_layout(
-        height=850,
-        plot_bgcolor="#131722", # TV Arkaplan
-        paper_bgcolor="#131722", 
-        font=dict(color="#d1d4dc", family="Arial"), 
-        hovermode="x unified",
-        showlegend=False,
-        dragmode="pan", # Kaydırma modu aktif
-        margin=dict(l=20, r=60, t=30, b=20),
-        xaxis_rangeslider_visible=False,
-        hoverlabel=dict(
-            bgcolor="#1e222d",
-            font_size=13,
-            font_family="Arial",
-            bordercolor="#2a2e39"
-        )
-    )
-
-    # X Ekseni (Zaman)
-    fig.update_xaxes(
-        type='category', # Gapless
-        nticks=10, 
-        showgrid=True, gridwidth=1, gridcolor='#2a2e39',
-        showspikes=True, spikemode="across", spikesnap="cursor",
-        spikedash="dash", spikecolor="#787b86", spikethickness=1,
-        zeroline=False,
-        fixedrange=False # Scroll ile X ekseninde yakınlaştırma/uzaklaştırmaya izin ver
-    )
+    # 1. Ana Grafik (Fiyat) Nesnesini Oluştur
+    # inner_width ve inner_height ile boyutları belirliyoruz
+    chart = StreamlitChart(width=1000, height=500, toolbox=True)
     
-    # Ana Y Ekseni (Fiyat)
-    fig.update_yaxes(
-        showgrid=True, gridwidth=1, gridcolor='#2a2e39',
-        zeroline=False,
-        side="right", # Fiyat sağda
-        fixedrange=False # Eksen üzerinden tutularak mum boyutu ayarlamaya izin ver
-    )
+    # 2. Grafik Temasını ve Davranışlarını Ayarla
+    chart.layout(background_color='#131722', text_color='#d1d4dc', font_size=12, font_family="Arial")
+    chart.grid(vert_enabled=True, horz_enabled=True, color='#2a2e39')
+    chart.crosshair(mode='normal', vert_color='#787b86', vert_style='dashed', horz_color='#787b86', horz_style='dashed')
     
-    # Alt Panellerin Y Eksenleri
-    for i in range(2, num_oscs + 2):
-        fig.layout[f"yaxis{i}"].update(
-            showgrid=True, gridwidth=1, gridcolor='#2a2e39',
-            zeroline=False, side="right", fixedrange=False
-        )
+    # Zaman eksenini yapılandır (Gapless görünüm otomatik gelir)
+    chart.time_scale(right_offset=5, min_bar_spacing=2)
 
-    # Ana fiyat paneli başlığı
-    fig.add_annotation(
-        text=f"<b>{symbol} • {secilen_tf_etiket.upper()}</b>",
-        xref="paper", yref="paper",
-        x=0.01, y=0.99, showarrow=False,
-        xanchor="left", yanchor="top", 
-        font=dict(color="#d1d4dc", size=14),
-        bgcolor="rgba(19, 23, 34, 0.8)"
-    )
-
-    # --- 6. PLOTLY KONTROL BARI AYARLARI ---
-    config = {
-        'scrollZoom': True, # Fare tekerleğiyle yakınlaştırma aktif
-        'displayModeBar': True,
-        'modeBarButtonsToRemove': ['lasso2d', 'select2d', 'autoScale2d'], # Gereksiz araçları gizle
-        'modeBarButtonsToAdd': ['drawline', 'drawrect'], # Çizim araçları eklendi
-        'displaylogo': False
-    }
+    # 3. Mum Grafiğini Veriyle Besle
+    chart.set(df)
     
-    st.plotly_chart(fig, use_container_width=True, config=config)
+    # 4. İndikatörleri Hesapla ve Ekle (Lightweight Charts'ta çizgi eklemek)
+    # NOT: Pandas TA kullanmaya devam edebilirsiniz.
+    import pandas_ta as ta
+    
+    # --- BOLLINGER BANTLARI (Fiyat grafiğinin üzerine) ---
+    bb = ta.bbands(df['Close'], length=20, std=2)
+    if bb is not None and not bb.empty:
+        # Bollinger datası için 'time' ve 'value' formatında sözlükler oluşturmalıyız
+        bbu = pd.DataFrame({'time': df['time'], 'value': bb.iloc[:, 2]}) # Üst Bant
+        bbl = pd.DataFrame({'time': df['time'], 'value': bb.iloc[:, 0]}) # Alt Bant
+        
+        # Çizgileri ana grafiğe ekle
+        line_bbu = chart.create_line(color='rgba(136, 136, 136, 0.7)', style='solid', width=1, name='BB Üst')
+        line_bbl = chart.create_line(color='rgba(136, 136, 136, 0.7)', style='solid', width=1, name='BB Alt')
+        
+        line_bbu.set(bbu)
+        line_bbl.set(bbl)
 
-# --- 7. HATA MESAJLARI ---
+    # --- MACD İÇİN ALT PANEL OLUŞTURMA (SUB-CHART) ---
+    macd_pane = chart.create_subchart(width=1000, height=200, sync=True) # sync=True: Ana grafikle x ekseni senkronize olur
+    
+    macd_calc = ta.macd(df['Close'])
+    if macd_calc is not None and not macd_calc.empty:
+        macd_line_data = pd.DataFrame({'time': df['time'], 'value': macd_calc.iloc[:, 0]})
+        signal_line_data = pd.DataFrame({'time': df['time'], 'value': macd_calc.iloc[:, 2]})
+        hist_data = pd.DataFrame({'time': df['time'], 'value': macd_calc.iloc[:, 1]})
+        
+        # MACD Histogramı için renk ataması (Yeşil/Kırmızı)
+        hist_data['color'] = hist_data['value'].apply(lambda x: 'rgba(38, 166, 154, 0.8)' if x >= 0 else 'rgba(239, 83, 80, 0.8)')
+        
+        # Panele çizgileri ve histogramı ekle
+        hist_series = macd_pane.create_histogram(name="MACD Hist")
+        hist_series.set(hist_data)
+        
+        macd_series = macd_pane.create_line(color='#2962FF', width=2, name='MACD')
+        signal_series = macd_pane.create_line(color='#FF6D00', width=2, name='Signal')
+        
+        macd_series.set(macd_line_data)
+        signal_series.set(signal_line_data)
+
+    # 5. Grafiği Streamlit Ekrana Bas
+    chart.load()
+
 elif df.empty:
-    st.error("Veri çekilemedi. Lütfen sembolü kontrol edin veya seçtiğiniz tarih aralığında piyasanın açık olduğundan emin olun.")
-else:
-    st.warning(f"Seçili sembol veya tarih aralığı için yeterli veri yok. ({len(df)} bar bulundu, indikatörler için en az 30 bar gereklidir.)")
+    st.error("Veri çekilemedi. Lütfen sembolü kontrol edin.")
