@@ -47,10 +47,8 @@ def veri_cek(sembol, iv):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [col[0] for col in df.columns]
     
-    # Tüm sütun adlarını küçük harfe çevir
     df.columns = [str(c).lower() for c in df.columns]
     
-    # Eksikleri temizle ve sayısal tipe zorla
     df = df.dropna(subset=['open', 'high', 'low', 'close'])
     for col in ['open', 'high', 'low', 'close', 'volume']:
         if col in df.columns:
@@ -64,19 +62,11 @@ df_raw = veri_cek(symbol, interval)
 if not df_raw.empty and len(df_raw) > 30:
     st.markdown(f"### {symbol} • {secilen_tf_etiket.upper()}")
     
-    # ---------------------------------------------------------
-    # VERİ HAZIRLAMA (LIGHTWEIGHT CHARTS İÇİN KESİN FORMAT)
-    # Kütüphane tam olarak bu formatı (time string formatında) ve sadece ilgili sütunları istiyor
-    # ---------------------------------------------------------
+    # KRİTİK: Zamanı string yapmak yerine ham datetime'da (tz-naive) bırakıyoruz. (Intraday desteği için şart)
+    zaman_verisi = df_raw.index.tz_localize(None) if df_raw.index.tzinfo else df_raw.index
     
-    # İndeksi datetime objesi olarak alıp timezone bilgisini kaldırıyoruz
-    index_dt = df_raw.index.tz_localize(None) if df_raw.index.tzinfo else df_raw.index
-    # Kütüphane YYYY-MM-DD formatında (günlük grafikler için) veya YYYY-MM-DD HH:MM:SS formatında string bekler
-    time_series = index_dt.strftime('%Y-%m-%d %H:%M:%S') 
-    
-    # Ana fiyat verisi
     fiyat_verisi = pd.DataFrame({
-        'time': time_series,
+        'time': zaman_verisi,
         'open': df_raw['open'].values,
         'high': df_raw['high'].values,
         'low': df_raw['low'].values,
@@ -93,7 +83,8 @@ if not df_raw.empty and len(df_raw) > 30:
     # TRADINGVIEW (LIGHTWEIGHT) CHART OLUŞTURMA
     # ---------------------------------------------------------
     
-    chart = StreamlitChart(width=1100, height=500, toolbox=True)
+    # Yüksekliği 800'e çıkarıyoruz ki alt panellere (osilatörlere) yer kalsın
+    chart = StreamlitChart(width=1100, height=800, toolbox=True)
     
     chart.layout(background_color=bg_color, text_color=text_color, font_size=12, font_family="Arial")
     chart.grid(vert_enabled=True, horz_enabled=True, color=grid_color)
@@ -104,33 +95,30 @@ if not df_raw.empty and len(df_raw) > 30:
     
     # 2. Bollinger Bantları
     if bb is not None and not bb.empty:
-        # Hata önleme: DataFrame uzunluklarının eşleşmesi için NaN değerleri içeren tüm satırları siliyoruz
         bb_df = pd.DataFrame({
-            'time': time_series,
+            'time': zaman_verisi,
             'BB_Ust': bb.iloc[:, 2].values,
             'BB_Alt': bb.iloc[:, 0].values
         }).dropna()
         
-        # Grafik çizgilerini ekle
         line_bbu = chart.create_line(name='BB_Ust', color=bollinger_color, style='solid', width=1)
         line_bbl = chart.create_line(name='BB_Alt', color=bollinger_color, style='solid', width=1)
         
-        # Veriyi ata (sadece time ve ilgili değer sütununu içeren DataFrame gönderiyoruz)
         line_bbu.set(bb_df[['time', 'BB_Ust']])
         line_bbl.set(bb_df[['time', 'BB_Alt']])
 
     # 3. MACD Paneli (Osilatör)
     if macd_calc is not None and not macd_calc.empty:
-        macd_pane = chart.create_subchart(width=1100, height=200, sync=True)
+        # KRİTİK DÜZELTME: height=200 yerine height=0.25 (toplam grafiğin %25'i) yapıldı
+        macd_pane = chart.create_subchart(width=1, height=0.25, sync=True)
         
         macd_df = pd.DataFrame({
-            'time': time_series,
+            'time': zaman_verisi,
             'MACD_Line': macd_calc.iloc[:, 0].values,
             'MACD_Hist': macd_calc.iloc[:, 1].values,
             'Signal_Line': macd_calc.iloc[:, 2].values
         }).dropna()
         
-        # Histogram renklerini ayarla
         if tema_secimi == "Koyu (Dark)":
             macd_df['color'] = macd_df['MACD_Hist'].apply(lambda x: 'rgba(38, 166, 154, 0.8)' if x >= 0 else 'rgba(239, 83, 80, 0.8)')
         else:
@@ -146,10 +134,11 @@ if not df_raw.empty and len(df_raw) > 30:
 
     # 4. STOCH RSI Paneli (Osilatör)
     if stoch_calc is not None and not stoch_calc.empty:
-        stoch_pane = chart.create_subchart(width=1100, height=150, sync=True)
+        # KRİTİK DÜZELTME: height=0.20 (toplam grafiğin %20'si)
+        stoch_pane = chart.create_subchart(width=1, height=0.20, sync=True)
         
         stoch_df = pd.DataFrame({
-            'time': time_series,
+            'time': zaman_verisi,
             'Stoch_K': stoch_calc.iloc[:, 0].values,
             'Stoch_D': stoch_calc.iloc[:, 1].values
         }).dropna()
