@@ -13,18 +13,18 @@ symbol = st.sidebar.text_input("Sembol (Örn: BTC-USD veya THYAO.IS)", "BTC-USD"
 
 @st.cache_data(ttl=900)
 def veri_cek(sembol):
-    # Veriyi çek
-    df = yf.download(sembol, period="1d", interval="15m")
+    # KRİTİK DÜZELTME: İndikatörlerin (MACD, Bollinger) hesaplanabilmesi için 
+    # period="1d" yerine period="5d" kullanıyoruz. Böylece yeterli bar (mum) sayısı sağlanır.
+    df = yf.download(sembol, period="5d", interval="15m")
     
     if df.empty:
         return df
         
-    # KRİTİK DÜZELTME: MultiIndex varsa tamamen düzleştir
+    # MultiIndex varsa tamamen düzleştir
     if isinstance(df.columns, pd.MultiIndex):
-        # Eğer yfinance ('Close', 'BTC-USD') şeklinde döndürüyorsa sadece ilk kelimeyi al ('Close')
         df.columns = [col[0] for col in df.columns]
     
-    # Tüm harfleri ilk harfi büyük formata zorla (açıkça Open, High, Low, Close, Volume olduğundan emin olmak için)
+    # Tüm harfleri ilk harfi büyük formata zorla (Open, High, Low, Close, Volume)
     df.columns = [str(c).capitalize() for c in df.columns]
     
     # Eksik verileri (NaN) temizle
@@ -43,7 +43,7 @@ def veri_cek(sembol):
 # Veriyi çekelim
 df = veri_cek(symbol)
 
-# Bollinger (20) ve MACD (26) için en az 26 satır veri şarttır
+# MACD (26) ve Bollinger (20) için en az 30 bar olması şarttır
 if not df.empty and len(df) > 30:
     # 2. DİNAMİK İNDİKATÖR YÜKLEME
     overlay_mods = []
@@ -96,7 +96,7 @@ if not df.empty and len(df) > 30:
         try:
             mod.çiz(fig, df, row=i)
             
-            # KRİTİK DÜZELTME: xref="x1 domain" yerine direkt figure add_annotation
+            # Alt grafikler için sabit başlık
             fig.add_annotation(
                 text=f"<b>{mod.BILGI['ad']}</b>",
                 xref=f"x{i} domain", yref=f"y{i} domain",
@@ -119,8 +119,7 @@ if not df.empty and len(df) > 30:
         xaxis_rangeslider_visible=False
     )
 
-    # KRİTİK DÜZELTME: xref="x1 domain" hatasını yaratan asıl yer burasıydı.
-    # xref="paper" ve yref="paper" kullanarak tüm eksen bağımlılıklarını kaldırdık.
+    # Ana fiyat paneli için sabit başlık (Plotly ValueError hatasını çözen kısım)
     fig.add_annotation(
         text=f"<b>{symbol} - VERİ PANELİ</b>",
         xref="paper", yref="paper",
