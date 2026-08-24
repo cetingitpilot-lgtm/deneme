@@ -19,7 +19,6 @@ timeframes = {
 secilen_tf_etiket = st.sidebar.selectbox("Zaman Dilimi", options=list(timeframes.keys()), index=0)
 interval = timeframes[secilen_tf_etiket]
 
-# Tema Seçimi
 tema_secimi = st.sidebar.radio("Tema Seçimi", ["Koyu (Dark)", "Açık (Light)"], index=0)
 
 # Temaya Göre Dinamik Renk Paleti Tanımlamaları
@@ -34,7 +33,7 @@ else:
     text_color = '#191919'
     grid_color = '#e1e3e6'
     crosshair_color = '#434651'
-    bollinger_color = 'rgba(41, 98, 255, 0.5)' # Açık temada mavi daha iyi görünür
+    bollinger_color = 'rgba(41, 98, 255, 0.5)' 
 
 # --- 2. GÜVENLİ VERİ ÇEKME FONKSİYONU ---
 @st.cache_data(ttl=900)
@@ -43,115 +42,128 @@ def veri_cek(sembol, iv):
     df = yf.download(sembol, period=donem, interval=iv)
     
     if df.empty:
-        return df
+        return pd.DataFrame()
         
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [col[0] for col in df.columns]
     
-    df = df.reset_index()
+    # Tüm sütun adlarını küçük harfe çevir
     df.columns = [str(c).lower() for c in df.columns]
     
-    if 'datetime' in df.columns:
-        df.rename(columns={'datetime': 'time'}, inplace=True)
-    elif 'date' in df.columns:
-        df.rename(columns={'date': 'time'}, inplace=True)
-    
+    # Eksikleri temizle ve sayısal tipe zorla
     df = df.dropna(subset=['open', 'high', 'low', 'close'])
     for col in ['open', 'high', 'low', 'close', 'volume']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    # KRİTİK: lightweight_charts python kütüphanesi Python datetime nesnelerini kullanmayı tercih eder.
-    # String formatı alt panelleri (subchart) bozabiliyor. Bu yüzden datetime objesinde bırakıyoruz.
-    df['time'] = pd.to_datetime(df['time'], utc=True).dt.tz_convert(None)
-    df = df.drop_duplicates(subset=['time']).sort_values('time').reset_index(drop=True)
-    
     return df
 
-df = veri_cek(symbol, interval)
+df_raw = veri_cek(symbol, interval)
 
 # --- 3. VERİ KONTROLÜ VE ÇİZİM ---
-if not df.empty and len(df) > 30:
+if not df_raw.empty and len(df_raw) > 30:
     st.markdown(f"### {symbol} • {secilen_tf_etiket.upper()}")
     
-    # İNDİKATÖR HESAPLAMALARI
-    bb = ta.bbands(df['close'], length=20, std=2)
-    macd_calc = ta.macd(df['close'])
-    stoch_calc = ta.stochrsi(df['close']) # Örnek olması için StochRSI da ekledim
+    # ---------------------------------------------------------
+    # VERİ HAZIRLAMA (LIGHTWEIGHT CHARTS İÇİN KESİN FORMAT)
+    # Kütüphane tam olarak bu formatı (time string formatında) ve sadece ilgili sütunları istiyor
+    # ---------------------------------------------------------
+    
+    # İndeksi datetime objesi olarak alıp timezone bilgisini kaldırıyoruz
+    index_dt = df_raw.index.tz_localize(None) if df_raw.index.tzinfo else df_raw.index
+    # Kütüphane YYYY-MM-DD formatında (günlük grafikler için) veya YYYY-MM-DD HH:MM:SS formatında string bekler
+    time_series = index_dt.strftime('%Y-%m-%d %H:%M:%S') 
+    
+    # Ana fiyat verisi
+    fiyat_verisi = pd.DataFrame({
+        'time': time_series,
+        'open': df_raw['open'].values,
+        'high': df_raw['high'].values,
+        'low': df_raw['low'].values,
+        'close': df_raw['close'].values,
+        'volume': df_raw['volume'].values if 'volume' in df_raw.columns else [0] * len(df_raw)
+    })
+    
+    # İndikatör Hesaplamaları
+    bb = ta.bbands(df_raw['close'], length=20, std=2)
+    macd_calc = ta.macd(df_raw['close'])
+    stoch_calc = ta.stochrsi(df_raw['close'])
     
     # ---------------------------------------------------------
     # TRADINGVIEW (LIGHTWEIGHT) CHART OLUŞTURMA
     # ---------------------------------------------------------
     
-    # 1. Ana Grafik (Fiyat)
     chart = StreamlitChart(width=1100, height=500, toolbox=True)
     
-    # Tema ayarları uygulama
     chart.layout(background_color=bg_color, text_color=text_color, font_size=12, font_family="Arial")
     chart.grid(vert_enabled=True, horz_enabled=True, color=grid_color)
     chart.crosshair(mode='normal', vert_color=crosshair_color, vert_style='dashed', horz_color=crosshair_color, horz_style='dashed')
-    
-    # Zaman çizelgesi ayarı (sağda boşluk bırak)
     chart.time_scale(right_offset=10, min_bar_spacing=2)
 
-    # Temel fiyat verisi
-    fiyat_verisi = df[['time', 'open', 'high', 'low', 'close', 'volume']].copy()
     chart.set(fiyat_verisi)
     
     # 2. Bollinger Bantları
     if bb is not None and not bb.empty:
-        bbu_data = pd.DataFrame({'time': df['time'], 'BB_Ust': bb.iloc[:, 2]}).dropna()
-        bbl_data = pd.DataFrame({'time': df['time'], 'BB_Alt': bb.iloc[:, 0]}).dropna()
+        # Hata önleme: DataFrame uzunluklarının eşleşmesi için NaN değerleri içeren tüm satırları siliyoruz
+        bb_df = pd.DataFrame({
+            'time': time_series,
+            'BB_Ust': bb.iloc[:, 2].values,
+            'BB_Alt': bb.iloc[:, 0].values
+        }).dropna()
         
+        # Grafik çizgilerini ekle
         line_bbu = chart.create_line(name='BB_Ust', color=bollinger_color, style='solid', width=1)
         line_bbl = chart.create_line(name='BB_Alt', color=bollinger_color, style='solid', width=1)
         
-        line_bbu.set(bbu_data)
-        line_bbl.set(bbl_data)
+        # Veriyi ata (sadece time ve ilgili değer sütununu içeren DataFrame gönderiyoruz)
+        line_bbu.set(bb_df[['time', 'BB_Ust']])
+        line_bbl.set(bb_df[['time', 'BB_Alt']])
 
     # 3. MACD Paneli (Osilatör)
     if macd_calc is not None and not macd_calc.empty:
         macd_pane = chart.create_subchart(width=1100, height=200, sync=True)
         
-        # MACD Histogramı
-        hist_data = pd.DataFrame({'time': df['time'], 'MACD_Hist': macd_calc.iloc[:, 1]}).dropna()
+        macd_df = pd.DataFrame({
+            'time': time_series,
+            'MACD_Line': macd_calc.iloc[:, 0].values,
+            'MACD_Hist': macd_calc.iloc[:, 1].values,
+            'Signal_Line': macd_calc.iloc[:, 2].values
+        }).dropna()
         
-        # Temaya göre Histogram renkleri (Açık temada daha belirgin renkler)
+        # Histogram renklerini ayarla
         if tema_secimi == "Koyu (Dark)":
-            hist_data['color'] = hist_data['MACD_Hist'].apply(lambda x: 'rgba(38, 166, 154, 0.8)' if x >= 0 else 'rgba(239, 83, 80, 0.8)')
+            macd_df['color'] = macd_df['MACD_Hist'].apply(lambda x: 'rgba(38, 166, 154, 0.8)' if x >= 0 else 'rgba(239, 83, 80, 0.8)')
         else:
-             hist_data['color'] = hist_data['MACD_Hist'].apply(lambda x: 'rgba(7, 137, 125, 0.8)' if x >= 0 else 'rgba(209, 36, 33, 0.8)')
+             macd_df['color'] = macd_df['MACD_Hist'].apply(lambda x: 'rgba(7, 137, 125, 0.8)' if x >= 0 else 'rgba(209, 36, 33, 0.8)')
         
         hist_series = macd_pane.create_histogram(name='MACD_Hist')
-        hist_series.set(hist_data)
-        
-        # MACD ve Sinyal Çizgileri
-        macd_line_data = pd.DataFrame({'time': df['time'], 'MACD_Line': macd_calc.iloc[:, 0]}).dropna()
-        signal_line_data = pd.DataFrame({'time': df['time'], 'Signal_Line': macd_calc.iloc[:, 2]}).dropna()
-        
         macd_series = macd_pane.create_line(name='MACD_Line', color='#2962FF', width=2)
         signal_series = macd_pane.create_line(name='Signal_Line', color='#FF6D00', width=2)
         
-        macd_series.set(macd_line_data)
-        signal_series.set(signal_line_data)
+        hist_series.set(macd_df[['time', 'MACD_Hist', 'color']])
+        macd_series.set(macd_df[['time', 'MACD_Line']])
+        signal_series.set(macd_df[['time', 'Signal_Line']])
 
-    # 4. STOCH RSI Paneli (İkinci Osilatör Örneği)
+    # 4. STOCH RSI Paneli (Osilatör)
     if stoch_calc is not None and not stoch_calc.empty:
         stoch_pane = chart.create_subchart(width=1100, height=150, sync=True)
         
-        stoch_k_data = pd.DataFrame({'time': df['time'], 'Stoch_K': stoch_calc.iloc[:, 0]}).dropna()
-        stoch_d_data = pd.DataFrame({'time': df['time'], 'Stoch_D': stoch_calc.iloc[:, 1]}).dropna()
+        stoch_df = pd.DataFrame({
+            'time': time_series,
+            'Stoch_K': stoch_calc.iloc[:, 0].values,
+            'Stoch_D': stoch_calc.iloc[:, 1].values
+        }).dropna()
         
         stoch_k = stoch_pane.create_line(name='Stoch_K', color='#2962FF', width=2)
         stoch_d = stoch_pane.create_line(name='Stoch_D', color='#FF6D00', width=2)
         
-        stoch_k.set(stoch_k_data)
-        stoch_d.set(stoch_d_data)
+        stoch_k.set(stoch_df[['time', 'Stoch_K']])
+        stoch_d.set(stoch_df[['time', 'Stoch_D']])
 
     # 5. Grafiği Göster
     chart.load()
 
-elif df.empty:
+elif df_raw.empty:
     st.error("Veri çekilemedi. Borsa kapalı olabilir veya sembol hatalı.")
 else:
     st.warning("Yeterli veri bulunamadı. Lütfen farklı bir sembol veya zaman dilimi deneyin.")
