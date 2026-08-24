@@ -5,6 +5,7 @@ from plotly.subplots import make_subplots
 import importlib
 import indicators
 import pandas as pd
+from datetime import datetime, timedelta
 
 st.set_page_config(layout="wide", page_title="Gemini Finansal Analiz")
 
@@ -12,7 +13,6 @@ st.set_page_config(layout="wide", page_title="Gemini Finansal Analiz")
 st.sidebar.header("Ayarlar")
 symbol = st.sidebar.text_input("Sembol (Örn: BTC-USD veya THYAO.IS)", "BTC-USD")
 
-# Kullanıcının seçeceği etiketler (Görünür kısımlar) ve bunların yfinance karşılıkları (Sözlük yapısı)
 timeframes = {
     "1 Dakika": "1m",
     "5 Dakika": "5m",
@@ -22,40 +22,43 @@ timeframes = {
     "1 Hafta": "1wk"
 }
 
-# Selectbox oluşturma
 secilen_tf_etiket = st.sidebar.selectbox(
     "Zaman Dilimi (Timeframe)", 
     options=list(timeframes.keys()), 
-    index=2  # Varsayılan olarak 3. sıradaki "15 Dakika" seçili gelsin
+    index=2
 )
-
-# Seçilen etiketin yfinance karşılığını (örn: "15m") al
 interval_degeri = timeframes[secilen_tf_etiket]
+
+# Tarih Aralığı Seçimi
+bugun = datetime.now()
+varsayilan_baslangic = bugun - timedelta(days=30) # Varsayılan olarak son 30 gün
+
+tarih_araligi = st.sidebar.date_input(
+    "Tarih Aralığı",
+    value=(varsayilan_baslangic, bugun),
+    max_value=bugun
+)
 
 # --- 2. VERİ ÇEKME FONKSİYONU ---
 @st.cache_data(ttl=900)
 def veri_cek(sembol, interval):
-    # Interval'e (Zaman dilimine) göre geriye dönük ne kadar veri çekeceğimizi (period) dinamik belirliyoruz
-    # Çünkü yfinance 1 dakikalık veriyi maksimum son 7 gün için verebilir vs.
     if interval == "1m":
         donem = "7d"
     elif interval in ["5m", "15m"]:
-        donem = "60d" # Mümkün olan en geniş aralığı çekiyoruz
+        donem = "60d"
     elif interval == "1h":
         donem = "730d"
     else:
-        donem = "max" # Günlük ve Haftalık için tüm geçmişi çek
+        donem = "max"
 
     df = yf.download(sembol, period=donem, interval=interval)
     
     if df.empty:
         return df
         
-    # MultiIndex düzeltmesi
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [col[0] for col in df.columns]
     
-    # Sütunları formatla
     df.columns = [str(c).capitalize() for c in df.columns]
     df = df.dropna()
     
@@ -64,25 +67,31 @@ def veri_cek(sembol, interval):
             df[col] = pd.to_numeric(df[col], errors='coerce')
             
     df = df.dropna()
-    
-    # GAPLESS GÖRÜNÜM: Zaman dilimine göre tarih/saat formatını ayarla
-    if interval in ["1d", "1wk"]:
-        # Günlük/Haftalık grafikte sadece tarihi göster
-        df.index = df.index.strftime('%Y-%m-%d')
-    else:
-        # Saatlik/Dakikalık grafikte saat/dakika da göster
-        df.index = df.index.strftime('%Y-%m-%d %H:%M')
-    
     return df
 
-# Fonksiyonu çağırırken kullanıcının seçtiği interval değerini de gönderiyoruz
 df = veri_cek(symbol, interval_degeri)
 
-# ... (Kodun geri kalanı indikatör çizimi ve Plotly ayarları - bir önceki versiyon ile tamamen aynı) ...
+# --- 3. VERİYİ TARİH ARALIĞINA GÖRE FİLTRELEME ---
+if not df.empty and len(tarih_araligi) == 2:
+    baslangic_tarihi, bitis_tarihi = tarih_araligi
+    # yfinance indeksleri timezone-aware olabilir, bu yüzden timezone'u kaldırıyoruz (naive yapıyoruz)
+    df.index = df.index.tz_localize(None) 
+    
+    # Bitiş tarihine 1 gün ekliyoruz ki seçilen son günü de kapsasın
+    bitis_tarihi = bitis_tarihi + timedelta(days=1)
+    
+    # Filtreleme işlemi
+    mask = (df.index >= pd.to_datetime(baslangic_tarihi)) & (df.index <= pd.to_datetime(bitis_tarihi))
+    df = df.loc[mask]
 
-# MACD ve Bollinger için en az 30 bar olması şarttır
+# Filtreleme sonrası tekrar gapless formatına dönüştürüyoruz
+if not df.empty:
+    if interval_degeri in ["1d", "1wk"]:
+        df.index = df.index.strftime('%Y-%m-%d')
+    else:
+        df.index = df.index.strftime('%Y-%m-%d %H:%M')
+
 if not df.empty and len(df) > 30:
-    # 2. DİNAMİK İNDİKATÖR YÜKLEME
     overlay_mods = []
     oscillator_mods = []
 
@@ -97,7 +106,6 @@ if not df.empty and len(df) > 30:
         except Exception as e:
             st.sidebar.error(f"{ind_name} yüklenirken hata: {str(e)}")
 
-    # 3. GRAFİK YAPISI
     num_oscs = len(oscillator_mods)
     
     if num_oscs > 0:
@@ -108,27 +116,27 @@ if not df.empty and len(df) > 30:
     fig = make_subplots(
         rows=1 + num_oscs, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.02,
+        vertical_spacing=0.01, # Paneller arasını daha sıkılaştırdık (TradingView stili)
         row_heights=row_heights
     )
 
-    # 4. FİYAT ÇİZİMİ
+    # --- 4. TRADINGVIEW STİLİ CANDLESTICK ---
     fig.add_trace(
         go.Candlestick(
             x=df.index, open=df['Open'], high=df['High'], 
-            low=df['Low'], close=df['Close'], name="Fiyat"
+            low=df['Low'], close=df['Close'], name="Fiyat",
+            increasing_line_color='#26a69a', increasing_fillcolor='#26a69a', # TV Yükselen mum yeşili
+            decreasing_line_color='#ef5350', decreasing_fillcolor='#ef5350'  # TV Düşen mum kırmızısı
         ), 
         row=1, col=1
     )
 
-    # 5. OVERLAY İNDİKATÖRLERİ
     for mod in overlay_mods:
         try:
             mod.çiz(fig, df, row=1)
         except Exception as e:
             st.sidebar.warning(f"{mod.BILGI['ad']} hata verdi: {str(e)}")
 
-    # 6. OSCILLATOR İNDİKATÖRLERİ
     for i, mod in enumerate(oscillator_mods, start=2):
         try:
             mod.çiz(fig, df, row=i)
@@ -138,48 +146,68 @@ if not df.empty and len(df) > 30:
                 xref=f"x{i} domain", yref=f"y{i} domain",
                 x=0.01, y=0.95, showarrow=False,
                 xanchor="left", yanchor="top", 
-                font=dict(color="white", size=11),
-                bgcolor="rgba(0,0,0,0.6)"
+                font=dict(color="#d1d4dc", size=11), # TV gri etiket rengi
+                bgcolor="rgba(19, 23, 34, 0.7)" # TV koyu arkaplan
             )
         except Exception as e:
             st.sidebar.warning(f"{mod.BILGI['ad']} hata verdi: {str(e)}")
 
-    # 7. GLOBAL GÖRSEL AYARLAR
+    # --- 5. TRADINGVIEW GÖRÜNÜM AYARLARI ---
     fig.update_layout(
-        height=900,
-        template="plotly_dark",
+        height=850,
+        plot_bgcolor="#131722", # TradingView Chart Arkaplan Rengi
+        paper_bgcolor="#131722", # Çerçeve Arkaplan Rengi
+        font=dict(color="#d1d4dc", family="Arial"), # TV Font Rengi
         hovermode="x unified",
         showlegend=False,
         dragmode="pan",
-        margin=dict(l=10, r=10, t=30, b=10),
-        xaxis_rangeslider_visible=False
+        margin=dict(l=50, r=50, t=30, b=30), # Grafiği ekrana daha iyi yaymak için margin ayarı
+        xaxis_rangeslider_visible=False,
+        hoverlabel=dict(
+            bgcolor="#1e222d", # Hover tooltip arkaplanı
+            font_size=13,
+            font_family="Arial",
+            bordercolor="#2a2e39"
+        )
     )
 
-    # Kategori X ekseni (Gapless için)
+    # Izgara (Grid) ve Eksen Ayarları
     fig.update_xaxes(
         type='category',
-        nticks=12,
-        showspikes=True,
-        spikemode="across",
-        spikesnap="cursor",
-        spikedash="dash",
-        spikecolor="#888888",
-        spikethickness=1
+        nticks=10, # Eksen etiketlerini daha temiz tut
+        showgrid=True, gridwidth=1, gridcolor='#2a2e39', # İnce ve koyu gri grid çizgileri
+        showspikes=True, spikemode="across", spikesnap="cursor",
+        spikedash="dash", spikecolor="#787b86", spikethickness=1, # TV tarzı crosshair
+        zeroline=False
+    )
+    
+    fig.update_yaxes(
+        showgrid=True, gridwidth=1, gridcolor='#2a2e39',
+        zeroline=False,
+        side="right" # Fiyat ekseni sağda (TradingView standardı)
     )
 
-    # Başlık
+    # Fiyat paneli başlığı
     fig.add_annotation(
-        text=f"<b>{symbol} - {secilen_tf_etiket.upper()} VERİ PANELİ</b>", # Başlıkta seçilen timeframe'i göster
+        text=f"<b>{symbol} • {secilen_tf_etiket.upper()}</b>",
         xref="paper", yref="paper",
         x=0.01, y=0.99, showarrow=False,
         xanchor="left", yanchor="top", 
-        font=dict(color="#00FF00", size=13),
-        bgcolor="rgba(0,0,0,0.8)"
+        font=dict(color="#d1d4dc", size=14),
+        bgcolor="rgba(19, 23, 34, 0.8)"
     )
 
-    st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
+    # st.plotly_chart ayarları (Tam ekran ve modbar özelleştirmeleri)
+    config = {
+        'scrollZoom': True,
+        'displayModeBar': True,
+        'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+        'displaylogo': False
+    }
+    
+    st.plotly_chart(fig, use_container_width=True, config=config)
 
 elif df.empty:
     st.error("Veri çekilemedi. Borsa kapalı olabilir veya sembol hatalı.")
 else:
-    st.warning(f"Seçili sembol için yeterli veri yok. ({len(df)} bar bulundu, en az 30 bar gerekli.)")
+    st.warning(f"Seçili sembol veya tarih aralığı için yeterli veri yok. ({len(df)} bar bulundu, en az 30 bar gerekli.)")
