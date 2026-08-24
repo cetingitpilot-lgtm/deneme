@@ -3,4 +3,4 @@ pandas_ta
 plotly
 yfinance
 streamlit
-pip install streamlit-lightweight-charts
+streamlit-lightweight-charts
