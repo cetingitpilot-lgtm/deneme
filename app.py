@@ -8,41 +8,77 @@ import pandas as pd
 
 st.set_page_config(layout="wide", page_title="Gemini Finansal Analiz")
 
-# 1. VERİ ÇEKME
+# --- 1. YAN PANEL (SIDEBAR) BİLEŞENLERİ ---
+st.sidebar.header("Ayarlar")
 symbol = st.sidebar.text_input("Sembol (Örn: BTC-USD veya THYAO.IS)", "BTC-USD")
 
+# Kullanıcının seçeceği etiketler (Görünür kısımlar) ve bunların yfinance karşılıkları (Sözlük yapısı)
+timeframes = {
+    "1 Dakika": "1m",
+    "5 Dakika": "5m",
+    "15 Dakika": "15m",
+    "1 Saat": "1h",
+    "1 Gün": "1d",
+    "1 Hafta": "1wk"
+}
+
+# Selectbox oluşturma
+secilen_tf_etiket = st.sidebar.selectbox(
+    "Zaman Dilimi (Timeframe)", 
+    options=list(timeframes.keys()), 
+    index=2  # Varsayılan olarak 3. sıradaki "15 Dakika" seçili gelsin
+)
+
+# Seçilen etiketin yfinance karşılığını (örn: "15m") al
+interval_degeri = timeframes[secilen_tf_etiket]
+
+# --- 2. VERİ ÇEKME FONKSİYONU ---
 @st.cache_data(ttl=900)
-def veri_cek(sembol):
-    df = yf.download(sembol, period="5d", interval="15m")
+def veri_cek(sembol, interval):
+    # Interval'e (Zaman dilimine) göre geriye dönük ne kadar veri çekeceğimizi (period) dinamik belirliyoruz
+    # Çünkü yfinance 1 dakikalık veriyi maksimum son 7 gün için verebilir vs.
+    if interval == "1m":
+        donem = "7d"
+    elif interval in ["5m", "15m"]:
+        donem = "60d" # Mümkün olan en geniş aralığı çekiyoruz
+    elif interval == "1h":
+        donem = "730d"
+    else:
+        donem = "max" # Günlük ve Haftalık için tüm geçmişi çek
+
+    df = yf.download(sembol, period=donem, interval=interval)
     
     if df.empty:
         return df
         
-    # MultiIndex varsa tamamen düzleştir
+    # MultiIndex düzeltmesi
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [col[0] for col in df.columns]
     
-    # Tüm harfleri ilk harfi büyük formata zorla
+    # Sütunları formatla
     df.columns = [str(c).capitalize() for c in df.columns]
-    
     df = df.dropna()
     
-    # Tüm sütunların float tipinde olduğundan emin ol
     for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
             
     df = df.dropna()
     
-    # TRADINGVIEW GAPLESS (BOŞLUKSUZ) GÖRÜNÜM ÇÖZÜMÜ:
-    # İndeksi datetime'dan çıkarıp düz metne (string) çeviriyoruz.
-    # Böylece Plotly hafta sonu/gece gibi verisiz zamanları atlayıp barları yan yana dizer.
-    df.index = df.index.strftime('%Y-%m-%d %H:%M')
+    # GAPLESS GÖRÜNÜM: Zaman dilimine göre tarih/saat formatını ayarla
+    if interval in ["1d", "1wk"]:
+        # Günlük/Haftalık grafikte sadece tarihi göster
+        df.index = df.index.strftime('%Y-%m-%d')
+    else:
+        # Saatlik/Dakikalık grafikte saat/dakika da göster
+        df.index = df.index.strftime('%Y-%m-%d %H:%M')
     
     return df
 
-# Veriyi çekelim
-df = veri_cek(symbol)
+# Fonksiyonu çağırırken kullanıcının seçtiği interval değerini de gönderiyoruz
+df = veri_cek(symbol, interval_degeri)
+
+# ... (Kodun geri kalanı indikatör çizimi ve Plotly ayarları - bir önceki versiyon ile tamamen aynı) ...
 
 # MACD ve Bollinger için en az 30 bar olması şarttır
 if not df.empty and len(df) > 30:
@@ -119,11 +155,11 @@ if not df.empty and len(df) > 30:
         xaxis_rangeslider_visible=False
     )
 
-    # GAPLESS GÖRÜNÜM İÇİN X EKSENİ (KATEGORİ) AYARLARI
+    # Kategori X ekseni (Gapless için)
     fig.update_xaxes(
-        type='category',          # Ekseni zaman bazlı olmaktan çıkarıp kategoriye zorlar
-        nticks=12,                # Ekranda çok fazla tarih etiketi çıkıp karmaşa yaratmasını engeller
-        showspikes=True,          # İmleç ile hareket eden dikey crosshair
+        type='category',
+        nticks=12,
+        showspikes=True,
         spikemode="across",
         spikesnap="cursor",
         spikedash="dash",
@@ -131,9 +167,9 @@ if not df.empty and len(df) > 30:
         spikethickness=1
     )
 
-    # Ana fiyat paneli için sabit başlık
+    # Başlık
     fig.add_annotation(
-        text=f"<b>{symbol} - VERİ PANELİ</b>",
+        text=f"<b>{symbol} - {secilen_tf_etiket.upper()} VERİ PANELİ</b>", # Başlıkta seçilen timeframe'i göster
         xref="paper", yref="paper",
         x=0.01, y=0.99, showarrow=False,
         xanchor="left", yanchor="top", 
