@@ -42,37 +42,42 @@ df_raw = veri_cek(symbol, interval)
 if not df_raw.empty and len(df_raw) > 30:
     st.markdown(f"### {symbol} • {secilen_tf_etiket.upper()}")
     
-    # 1. ZAMAN VERİSİ (Metin (string) DEĞİL, ham datetime objesi bırakıyoruz)
+    # --- 1. SIFIR HATA İÇİN VERİ HAZIRLIĞI (UNIX TIMESTAMP) ---
+    # Zaman bilgisini saat diliminden arındırıyoruz
     dt_index = df_raw.index.tz_localize(None) if df_raw.index.tzinfo else df_raw.index
     
-    # Fiyat DataFrame'ini tam kütüphanenin beklediği standartta oluşturuyoruz
-    df_fiyat = pd.DataFrame({
-        'time': dt_index,
-        'open': df_raw['open'].astype(float),
-        'high': df_raw['high'].astype(float),
-        'low': df_raw['low'].astype(float),
-        'close': df_raw['close'].astype(float),
-        'volume': df_raw['volume'].astype(float) if 'volume' in df_raw.columns else 0.0
-    }).reset_index(drop=True)
-
-    # 2. İNDİKATÖR HESAPLAMALARI
-    bb = ta.bbands(df_fiyat['close'], length=20, std=2)
-    macd_calc = ta.macd(df_fiyat['close'])
-    stoch_calc = ta.stochrsi(df_fiyat['close'])
+    # KRİTİK ÇÖZÜM: JavaScript'in çökmeden okuyacağı Saniye cinsinden Unix Zamanına çeviriyoruz.
+    # Bu, "Tek Bar" sorununu kesin olarak çözen yöntemdir.
+    unix_time_series = dt_index.astype('int64') // 10**9 
     
-    # 3. KÜTÜPHANE VE EKRAN ALANI YAPILANDIRMASI
-    # KRİTİK ÇÖZÜM: inner_height=0.5 -> Ana grafiğe %50 alan veriyoruz ki alt paneller iframe dışına taşmasın.
+    # Ana fiyat verisi oluşturuluyor
+    df_fiyat = pd.DataFrame({
+        'time': unix_time_series,
+        'open': df_raw['open'].astype(float).values,
+        'high': df_raw['high'].astype(float).values,
+        'low': df_raw['low'].astype(float).values,
+        'close': df_raw['close'].astype(float).values,
+        'volume': df_raw['volume'].astype(float).values if 'volume' in df_raw.columns else [0.0] * len(df_raw)
+    })
+
+    # --- 2. İNDİKATÖR HESAPLAMALARI ---
+    bb = ta.bbands(df_raw['close'], length=20, std=2)
+    macd_calc = ta.macd(df_raw['close'])
+    stoch_calc = ta.stochrsi(df_raw['close'])
+    
+    # --- 3. KÜTÜPHANE VE EKRAN ALANI YAPILANDIRMASI ---
+    # inner_height=0.5 -> Ana grafiğe %50 alan veriyoruz ki alt paneller iframe dışına taşmasın.
     chart = StreamlitChart(width=1100, height=800, inner_width=1, inner_height=0.5)
     
     chart.layout(background_color=bg_color, text_color=text_color, font_size=12, font_family="Arial")
     chart.grid(vert_enabled=True, horz_enabled=True, color=grid_color)
     chart.crosshair(mode='normal', vert_color=crosshair_color, vert_style='dashed', horz_color=crosshair_color, horz_style='dashed')
     
-    # Alt paneller: MACD (%25 alan) + STOCH (%25 alan) -> Toplamda Ana Grafik ile %100'ü doldururlar
+    # Alt paneller: MACD (%25 alan) + STOCH (%25 alan)
     macd_pane = chart.create_subchart(width=1, height=0.25, sync=True)
     stoch_pane = chart.create_subchart(width=1, height=0.25, sync=True)
 
-    # 4. ÇİZGİLERİ (SERİLERİ) TANITMA (Veri basmadan önce)
+    # --- 4. ÇİZGİLERİ (SERİLERİ) TANITMA ---
     line_bbu = chart.create_line(color='rgba(136, 136, 136, 0.7)', width=1)
     line_bbl = chart.create_line(color='rgba(136, 136, 136, 0.7)', width=1)
     
@@ -83,20 +88,19 @@ if not df_raw.empty and len(df_raw) > 30:
     stoch_k = stoch_pane.create_line(color='#2962FF', width=2)
     stoch_d = stoch_pane.create_line(color='#FF6D00', width=2)
 
-    # 5. VERİLERİ (.set) BAĞLAMA
+    # --- 5. VERİLERİ (.set) BAĞLAMA ---
     chart.set(df_fiyat)
 
-    # Tüm indikatör verilerinde sütun ismini ZORLA "value" yapıyoruz (Kütüphane name uyuşmazlığında çökmesin diye)
     if bb is not None and not bb.empty:
-        df_bbu = pd.DataFrame({'time': df_fiyat['time'], 'value': bb.iloc[:, 2].astype(float)}).dropna()
-        df_bbl = pd.DataFrame({'time': df_fiyat['time'], 'value': bb.iloc[:, 0].astype(float)}).dropna()
+        df_bbu = pd.DataFrame({'time': df_fiyat['time'], 'value': bb.iloc[:, 2].astype(float).values}).dropna()
+        df_bbl = pd.DataFrame({'time': df_fiyat['time'], 'value': bb.iloc[:, 0].astype(float).values}).dropna()
         line_bbu.set(df_bbu)
         line_bbl.set(df_bbl)
 
     if macd_calc is not None and not macd_calc.empty:
-        df_macd_line = pd.DataFrame({'time': df_fiyat['time'], 'value': macd_calc.iloc[:, 0].astype(float)}).dropna()
-        df_signal_line = pd.DataFrame({'time': df_fiyat['time'], 'value': macd_calc.iloc[:, 2].astype(float)}).dropna()
-        df_hist = pd.DataFrame({'time': df_fiyat['time'], 'value': macd_calc.iloc[:, 1].astype(float)}).dropna()
+        df_macd_line = pd.DataFrame({'time': df_fiyat['time'], 'value': macd_calc.iloc[:, 0].astype(float).values}).dropna()
+        df_signal_line = pd.DataFrame({'time': df_fiyat['time'], 'value': macd_calc.iloc[:, 2].astype(float).values}).dropna()
+        df_hist = pd.DataFrame({'time': df_fiyat['time'], 'value': macd_calc.iloc[:, 1].astype(float).values}).dropna()
         
         if tema_secimi == "Koyu (Dark)":
             df_hist['color'] = df_hist['value'].apply(lambda x: 'rgba(38, 166, 154, 0.8)' if x >= 0 else 'rgba(239, 83, 80, 0.8)')
@@ -108,12 +112,12 @@ if not df_raw.empty and len(df_raw) > 30:
         signal_series.set(df_signal_line)
 
     if stoch_calc is not None and not stoch_calc.empty:
-        df_stoch_k = pd.DataFrame({'time': df_fiyat['time'], 'value': stoch_calc.iloc[:, 0].astype(float)}).dropna()
-        df_stoch_d = pd.DataFrame({'time': df_fiyat['time'], 'value': stoch_calc.iloc[:, 1].astype(float)}).dropna()
+        df_stoch_k = pd.DataFrame({'time': df_fiyat['time'], 'value': stoch_calc.iloc[:, 0].astype(float).values}).dropna()
+        df_stoch_d = pd.DataFrame({'time': df_fiyat['time'], 'value': stoch_calc.iloc[:, 1].astype(float).values}).dropna()
         stoch_k.set(df_stoch_k)
         stoch_d.set(df_stoch_d)
 
-    # 6. EN SON AŞAMA: EKRANA RENDER ET
+    # --- 6. GRAFİĞİ RENDER ET ---
     chart.load()
 
 else:
