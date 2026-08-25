@@ -32,25 +32,27 @@ def veri_cek(sembol, iv):
     if isinstance(df.columns, pd.MultiIndex): 
         df.columns = [col[0] for col in df.columns]
     
-    # İndeksi sütun yap
+    # İndeksi sütun yap ve hepsini küçük harfe çevir
     df = df.reset_index()
-    
-    # Sütun isimlerini küçük harfe çevir
     df.columns = [str(c).lower() for c in df.columns]
     
-    # GARANTİ ÇÖZÜM (KeyError için):
-    # reset_index() sonrası tarih daima ilk sütundur (df.columns[0]).
-    # İsmi ne olursa olsun, ilk sütunun adını zorla 'time' yapıyoruz.
+    # KeyError Çözümü: İlk sütunun adı ne gelirse gelsin 'time' yap.
     df.rename(columns={df.columns[0]: 'time'}, inplace=True)
-        
     df = df.dropna(subset=['open', 'high', 'low', 'close'])
     
-    # Zaman tipini timezone'suz güvenli datetime objesine çeviriyoruz
-    df['time'] = pd.to_datetime(df['time'], utc=True).dt.tz_convert(None)
+    # Saat dilimini (timezone) temizle
+    df['time'] = pd.to_datetime(df['time'])
+    if df['time'].dt.tz is not None:
+        df['time'] = df['time'].dt.tz_localize(None)
     
-    # Günlük grafikse, kütüphane metin ('YYYY-MM-DD') formatı ister
+    # ---------------------------------------------------------
+    # 1. ÇÖZÜM: TEK BAR ÇÖKMESİNİ ENGELLEYEN STRING DÖNÜŞÜMÜ
+    # Zaman verisini JavaScript'in şaşırmayacağı metne çeviriyoruz.
+    # ---------------------------------------------------------
     if iv == '1d':
         df['time'] = df['time'].dt.strftime('%Y-%m-%d')
+    else:
+        df['time'] = df['time'].dt.strftime('%Y-%m-%d %H:%M:%S')
     
     return df
 
@@ -65,7 +67,10 @@ if not df.empty and len(df) > 30:
     macd = ta.macd(df['close'])
     stoch = ta.stochrsi(df['close'])
     
-    # Kütüphane ve Panelleri Oluştur
+    # ---------------------------------------------------------
+    # 2. ÇÖZÜM: OSİLATÖR GÖRÜNMEZLİĞİNİ BİTİREN YAPI 
+    # inner_height=0.5 ana grafiğe %50 alan verir, taşmayı engeller.
+    # ---------------------------------------------------------
     chart = StreamlitChart(width=1100, height=800, inner_width=1, inner_height=0.5)
     macd_pane = chart.create_subchart(width=1, height=0.25, sync=True)
     stoch_pane = chart.create_subchart(width=1, height=0.25, sync=True)
@@ -126,4 +131,3 @@ if not df.empty and len(df) > 30:
 
 else:
     st.error("Yeterli veri bulunamadı. Lütfen sembolü kontrol edin.")
-    
