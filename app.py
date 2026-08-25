@@ -26,28 +26,48 @@ else:
 @st.cache_data(ttl=900)
 def veri_cek(sembol, iv):
     donem = "60d" if iv in ["5m", "15m"] else "730d" if iv == "1h" else "max"
+    
+    # 1. Veriyi çekiyoruz
     df = yf.download(sembol, period=donem, interval=iv)
+    
+    # Eğer doğrudan boş gelirse hemen dön
     if df.empty: return pd.DataFrame()
     
+    # 2. MultiIndex (Çoklu Sütun) yapısını tek seviyeye indir (yfinance'ın yeni sürümü bazen böyle döner)
     if isinstance(df.columns, pd.MultiIndex): 
         df.columns = [col[0] for col in df.columns]
     
+    # 3. İndeksi sıfırla (Böylece Datetime indeksi normal bir sütun olur)
     df = df.reset_index()
+    
+    # 4. Sütun isimlerini zorla küçük harfe çevir (Open -> open)
     df.columns = [str(c).lower() for c in df.columns]
+    
+    # 5. Tarih sütununun ismini 'time' olarak ayarla (İlk sütun her zaman tarihtir)
     df.rename(columns={df.columns[0]: 'time'}, inplace=True)
     
-    # Tüm OHLCV verilerini ZORUNLU olarak standart float'a çevir
-    for col in ['open', 'high', 'low', 'close', 'volume']:
+    # 6. Güvenlik Kontrolü: İlgili OHLC sütunları gerçekten var mı?
+    gerekli_sutunlar = ['open', 'high', 'low', 'close']
+    if not all(col in df.columns for col in gerekli_sutunlar):
+        # Sütunlar beklenen formatta değilse boş döndür (Hata mesajını tetikler)
+        return pd.DataFrame()
+        
+    # 7. Sayısal veri dönüşümü (Float)
+    for col in gerekli_sutunlar + ['volume']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
             
+    # Eksik verili (NaN) satırları sil
     df = df.dropna(subset=['open', 'high', 'low', 'close'])
     
-    # Zaman formatını ZORUNLU olarak standart string'e çevir
-    df['time'] = pd.to_datetime(df['time'])
-    if df['time'].dt.tz is not None:
-        df['time'] = df['time'].dt.tz_localize(None)
+    # 8. Zaman Formatını Düzenleme (JavaScript uyumluluğu için)
+    # yfinance'tan gelen tarih verisini standart pandas datetime'a çeviriyoruz
+    df['time'] = pd.to_datetime(df['time'], utc=True)
     
+    # Eğer saat dilimi (timezone) bilgisi varsa kaldır
+    df['time'] = df['time'].dt.tz_localize(None)
+    
+    # Grafik zaman dilimine göre (interval) string formatına çevir
     if iv == '1d':
         df['time'] = df['time'].dt.strftime('%Y-%m-%d')
     else:
@@ -55,6 +75,7 @@ def veri_cek(sembol, iv):
     
     return df
 
+# Veriyi değişkene ata
 df = veri_cek(symbol, interval)
 
 # --- VERİ İŞLEME VE GRAFİK ÇİZİMİ ---
@@ -83,11 +104,9 @@ if not df.empty and len(df) > 30:
     stoch_pane.layout(background_color=bg_color, text_color=text_color, font_size=12, font_family="Arial")
     stoch_pane.grid(vert_enabled=True, horz_enabled=True, color=grid_color)
 
-    # --- KRİTİK BÖLÜM: VERİ BAĞLAMA (SAF LİSTE VE SÖZLÜKLERE DÖNÜŞÜM) ---
-    # Pandas yapısını tamamen kırıp JavaScript'in anlayacağı "Saf Dict Listesi"ne dönüştürüyoruz.
+    # --- VERİ BAĞLAMA (.to_dict('records') KULLANIMI) ---
     
-    # 1. Ana Fiyat
-    # df.to_dict('records') Pandas objelerini ham Python sözlüklerine çevirir. Görünmezlik sorununu %100 çözer.
+    # 1. Ana Fiyat (Dict listesine çevrildi)
     fiyat_verisi = df[['time', 'open', 'high', 'low', 'close', 'volume']].to_dict('records')
     chart.set(fiyat_verisi)
 
@@ -135,5 +154,7 @@ if not df.empty and len(df) > 30:
     # Grafiği Yükle
     chart.load()
 
+elif df.empty:
+    st.error("Veri çekilemedi. Bu durum şunlardan kaynaklanabilir:\n\n1. Sembol yanlış olabilir (BTC-USD yazmayı unutmayın).\n2. Yfinance servisi geçici olarak yanıt vermiyor olabilir.\n3. İnternet bağlantınız kısıtlı olabilir.")
 else:
-    st.error("Yeterli veri bulunamadı. Lütfen sembolü kontrol edin.")
+    st.warning("Yeterli veri bulunamadı. İndikatör hesaplamaları için en az 30 bar veriye ihtiyaç vardır.")
