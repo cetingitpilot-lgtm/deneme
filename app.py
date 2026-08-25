@@ -32,24 +32,25 @@ def veri_cek(sembol, iv):
     if isinstance(df.columns, pd.MultiIndex): 
         df.columns = [col[0] for col in df.columns]
     
-    df.columns = [str(c).lower() for c in df.columns]
+    # İndeksi sütun yap
     df = df.reset_index()
     
-    # Sütun adını standart 'time' yapıyoruz
-    if 'datetime' in df.columns:
-        df.rename(columns={'datetime': 'time'}, inplace=True)
-    elif 'date' in df.columns:
-        df.rename(columns={'date': 'time'}, inplace=True)
+    # Sütun isimlerini küçük harfe çevir
+    df.columns = [str(c).lower() for c in df.columns]
+    
+    # GARANTİ ÇÖZÜM (KeyError için):
+    # reset_index() sonrası tarih daima ilk sütundur (df.columns[0]).
+    # İsmi ne olursa olsun, ilk sütunun adını zorla 'time' yapıyoruz.
+    df.rename(columns={df.columns[0]: 'time'}, inplace=True)
         
     df = df.dropna(subset=['open', 'high', 'low', 'close'])
     
-    # KRİTİK ÇÖZÜM: Kütüphanenin Çökmesini Engelleyen Dinamik Zaman Formatı
-    df['time'] = pd.to_datetime(df['time']).dt.tz_localize(None) # Önce saat dilimini temizle
+    # Zaman tipini timezone'suz güvenli datetime objesine çeviriyoruz
+    df['time'] = pd.to_datetime(df['time'], utc=True).dt.tz_convert(None)
     
+    # Günlük grafikse, kütüphane metin ('YYYY-MM-DD') formatı ister
     if iv == '1d':
-        # Sadece günlük verilerde kütüphane 'YYYY-MM-DD' string formatı ister
         df['time'] = df['time'].dt.strftime('%Y-%m-%d')
-    # Dakikalık ve Saatlik verilerde df['time'] saf datetime olarak kalır!
     
     return df
 
@@ -64,31 +65,26 @@ if not df.empty and len(df) > 30:
     macd = ta.macd(df['close'])
     stoch = ta.stochrsi(df['close'])
     
-    # Kütüphane ve Panelleri Oluştur (Alt panellerin iframe dışına taşmaması için inner_height kullanıldı)
+    # Kütüphane ve Panelleri Oluştur
     chart = StreamlitChart(width=1100, height=800, inner_width=1, inner_height=0.5)
     macd_pane = chart.create_subchart(width=1, height=0.25, sync=True)
     stoch_pane = chart.create_subchart(width=1, height=0.25, sync=True)
 
-    # --- TEMA VE RENK AYARLARI (HER PANELE AYRI AYRI UYGULANMALIDIR!) ---
-    # 1. Ana Grafik Teması
+    # --- TEMA VE RENK AYARLARI ---
     chart.layout(background_color=bg_color, text_color=text_color, font_size=12, font_family="Arial")
     chart.grid(vert_enabled=True, horz_enabled=True, color=grid_color)
     chart.crosshair(mode='normal', vert_color=crosshair_color, vert_style='dashed', horz_color=crosshair_color, horz_style='dashed')
     chart.time_scale(right_offset=10, min_bar_spacing=2)
 
-    # 2. MACD Paneli Teması
     macd_pane.layout(background_color=bg_color, text_color=text_color, font_size=12, font_family="Arial")
     macd_pane.grid(vert_enabled=True, horz_enabled=True, color=grid_color)
     
-    # 3. STOCH Paneli Teması
     stoch_pane.layout(background_color=bg_color, text_color=text_color, font_size=12, font_family="Arial")
     stoch_pane.grid(vert_enabled=True, horz_enabled=True, color=grid_color)
 
     # --- VERİLERİ BAĞLAMA ---
-    # Ana fiyat verisi
     chart.set(df[['time', 'open', 'high', 'low', 'close', 'volume']])
 
-    # Bollinger Bantları
     if bb is not None and not bb.empty:
         line_bbu = chart.create_line(color='rgba(136, 136, 136, 0.7)', width=1)
         line_bbl = chart.create_line(color='rgba(136, 136, 136, 0.7)', width=1)
@@ -98,7 +94,6 @@ if not df.empty and len(df) > 30:
         line_bbu.set(df_bbu)
         line_bbl.set(df_bbl)
 
-    # MACD 
     if macd is not None and not macd.empty:
         hist_series = macd_pane.create_histogram()
         macd_series = macd_pane.create_line(color='#2962FF', width=2)
@@ -117,7 +112,6 @@ if not df.empty and len(df) > 30:
         macd_series.set(df_macd_line)
         signal_series.set(df_signal_line)
 
-    # STOCH RSI
     if stoch is not None and not stoch.empty:
         stoch_k = stoch_pane.create_line(color='#2962FF', width=2)
         stoch_d = stoch_pane.create_line(color='#FF6D00', width=2)
@@ -132,3 +126,4 @@ if not df.empty and len(df) > 30:
 
 else:
     st.error("Yeterli veri bulunamadı. Lütfen sembolü kontrol edin.")
+    
